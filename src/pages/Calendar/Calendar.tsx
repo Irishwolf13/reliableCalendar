@@ -1,17 +1,5 @@
 import React, { useRef } from 'react';
-import {
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonMenuButton,
-  IonPage,
-  IonTitle,
-  IonToolbar,
-  IonButton,
-  IonFooter,
-  useIonViewDidEnter,
-  IonBackButton,
-} from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
@@ -20,7 +8,6 @@ import './Calendar.css';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-
 
 const Calendar: React.FC = () => {
   const history = useHistory();
@@ -36,12 +23,35 @@ const Calendar: React.FC = () => {
     }
   };
 
-  const handleEventDrop = (info:any) => {
+  const handleEventDrop = (info: any) => {
     const { event } = info;
     console.log(`Event ${event.title} was dropped on ${event.startStr}`);
-    
     // Here you could also update your backend with the new event date.
   };
+
+  const handleEventClick = (info: any) => {
+    const { event } = info;
+    console.log(`You clicked on event: ${event.title}`);
+    console.log(event.allDay);
+    // Additional logic or interactions can be performed here.
+  };
+
+  // Navigate to today's date in the calendar
+  const handleTodayButtonClick = () => {
+    console.log("today");
+    const calendarApi = calendarRef.current?.getApi();
+    if (calendarApi) {
+      calendarApi.today();
+    }
+  };
+
+const handleEventResize = (info: any) => {
+  // Get the new end date
+  const newEndDate = info.event.end ? info.event.end.toISOString() : 'unknown';
+  info.revert();
+  console.log(`Resized event "${info.event.title}" to end at ${newEndDate}.`);
+  // This is where we would need to add events
+};
 
   useIonViewDidEnter(() => {
     setTimeout(() => {
@@ -68,7 +78,7 @@ const Calendar: React.FC = () => {
       </IonHeader>
 
       <IonContent>
-        <div style={{ padding: '1rem', width: '100%', height: '90%' }}>
+        <div className='calendarHolder'>
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, interactionPlugin]}
@@ -78,10 +88,26 @@ const Calendar: React.FC = () => {
             editable={true} // Enables event editing
             events={[
               { title: 'Project Launch', date: '2025-07-01' },
+              { title: 'Pro2', date: '2025-07-01' },
+              { title: 'Pro3', date: '2025-07-01' },
+              { title: 'Pro4', date: '2025-07-01' },
               { title: 'Birthday', date: '2025-09-10' },
               { title: 'Vacation', date: '2025-12-20' },
             ]}
+            customButtons={{
+              myTodayButton: {
+                text: 'Today',
+                click: handleTodayButtonClick,
+              }
+            }}
+            headerToolbar={{
+              left: 'prev,next today',
+              center: 'title',
+              right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
+            }}
             eventDrop={handleEventDrop} // Handles event drop
+            eventClick={handleEventClick} // Handles event click
+            eventResize={handleEventResize}
           />
         </div>
       </IonContent>
