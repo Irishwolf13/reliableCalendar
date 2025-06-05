@@ -22,16 +22,14 @@ const Splash: React.FC = () => {
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>Splash Page</IonTitle>
+          <IonTitle>Reliable Calendar</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding">
-          <div style={{ textAlign: 'center', marginTop: '50%' }}>
-            <h1>Welcome to Our App!</h1>
+            <h1>Splash Page</h1>
             <IonButton expand="full" onClick={navigateToLogin}>
               Login / Sign Up
             </IonButton>
-          </div>
       </IonContent>
       <IonFooter>
         <IonToolbar>
