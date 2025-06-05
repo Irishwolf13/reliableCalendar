@@ -1,5 +1,16 @@
-import React from 'react';
-import { IonButtons, IonContent, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonButton, IonFooter } from '@ionic/react';
+import React, { useRef } from 'react';
+import {
+  IonButtons,
+  IonContent,
+  IonHeader,
+  IonMenuButton,
+  IonPage,
+  IonTitle,
+  IonToolbar,
+  IonButton,
+  IonFooter,
+  useIonViewDidEnter,
+} from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
@@ -18,6 +29,10 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleGoToCalendarClicked = () => {
+    history.push('/calendar');
+  }
+
   return (
     <IonPage>
       <IonHeader>
@@ -27,14 +42,17 @@ const Home: React.FC = () => {
           </IonButtons>
           <IonTitle>Home</IonTitle>
           <IonButtons slot="end">
-            {/* Add a Logout button */}
             <IonButton onClick={handleLogout}>Logout</IonButton>
           </IonButtons>
         </IonToolbar>
       </IonHeader>
+
       <IonContent>
-        {/* Content of the Home Page */}
+        <div style={{ padding: '1rem', width: '100%', height: '90%' }}>
+          <IonButton onClick={handleGoToCalendarClicked}>Go To Calendar</IonButton>
+        </div>
       </IonContent>
+
       <IonFooter>
         <IonToolbar>
           <IonTitle size="small">© 2025 Dancing Goat Studios</IonTitle>

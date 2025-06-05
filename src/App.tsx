@@ -30,6 +30,7 @@ import './theme/variables.css';
 import Home from './pages/Home/Home';
 import Splash from './pages/Splash/Splash';
 import Login from './pages/Login/Login';
+import Calendar from './pages/Calendar/Calendar';
 
 setupIonicReact();
 
@@ -39,6 +40,7 @@ const App: React.FC = () => (
       <IonReactRouter>
         <IonRouterOutlet>
           <PrivateRoute exact path="/home" component={Home} />
+          <PrivateRoute exact path="/calendar" component={Calendar} />
 
           <Route exact path="/login" component={Login} />
           <Route exact path="/" component={Splash} />
