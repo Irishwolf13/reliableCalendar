@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -9,9 +9,52 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 
+// Define the job and event interfaces
+interface Job {
+  jobID: number;
+  title: string;
+  backgroundColor: string;
+  eventDates: string[];
+}
+
+interface CalendarEvent {
+  jobID: number;
+  title: string;
+  date: string;
+  backgroundColor: string;
+}
+
 const Calendar: React.FC = () => {
   const history = useHistory();
   const calendarRef = useRef<FullCalendar | null>(null);
+
+  // Use state for myJobs to keep updates in sync
+  const [myJobs, setMyJobs] = useState<Job[]>([
+    { jobID: 1, title: 'Project Launch', backgroundColor: 'green', eventDates: ['2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04'] }
+  ]);
+
+  // Set up state for the events based on myJobs
+  const [events, setEvents] = useState<CalendarEvent[]>(() =>
+    myJobs.reduce<CalendarEvent[]>((acc, job) => {
+      const expandedEvents = job.eventDates.map(date => ({
+        jobID: job.jobID,
+        title: job.title,
+        date,
+        backgroundColor: job.backgroundColor,
+      }));
+      return acc.concat(expandedEvents);
+    }, [])
+  );
+
+  useIonViewDidEnter(() => {
+    setTimeout(() => {
+      const calendarApi = calendarRef.current?.getApi();
+      if (calendarApi) {
+        calendarApi.updateSize();
+        calendarApi.gotoDate('2025-07-01');
+      }
+    }, 200);
+  });
 
   const handleLogout = async () => {
     try {
@@ -23,45 +66,137 @@ const Calendar: React.FC = () => {
     }
   };
 
-  const handleEventDrop = (info: any) => {
-    const { event } = info;
-    console.log(`Event ${event.title} was dropped on ${event.startStr}`);
-    // Here you could also update your backend with the new event date.
-  };
-
-  const handleEventClick = (info: any) => {
-    const { event } = info;
-    console.log(`You clicked on event: ${event.title}`);
-    console.log(event.allDay);
-    // Additional logic or interactions can be performed here.
-  };
-
-  // Navigate to today's date in the calendar
   const handleTodayButtonClick = () => {
-    console.log("today");
     const calendarApi = calendarRef.current?.getApi();
     if (calendarApi) {
       calendarApi.today();
     }
   };
 
-const handleEventResize = (info: any) => {
-  // Get the new end date
-  const newEndDate = info.event.end ? info.event.end.toISOString() : 'unknown';
-  info.revert();
-  console.log(`Resized event "${info.event.title}" to end at ${newEndDate}.`);
-  // This is where we would need to add events
+  const handleEventDrop = (info: any) => {
+  const { event } = info;
+  const jobId = event.extendedProps.jobID;
+
+  setMyJobs((prevJobs) => {
+    const newJobs = prevJobs.map((job) => {
+      if (job.jobID === jobId) {
+        const oldStartDateStr = info.oldEvent.start.toISOString().substring(0, 10);
+        const newStart = new Date(event.start);
+
+        // Find the index of the moved date
+        const movedDateIndex = job.eventDates.indexOf(oldStartDateStr);
+        
+        if (movedDateIndex !== -1) {
+          // Clone the eventDates array
+          const updatedEventDates = [...job.eventDates];
+
+          // Function to advance to the next weekday if needed
+          const getNextWeekday = (date: Date): Date => {
+            let nextDate = new Date(date);
+            while (nextDate.getDay() === 6 || nextDate.getDay() === 0) {
+              nextDate.setDate(nextDate.getDate() + 1);
+            }
+            return nextDate;
+          };
+
+          // Update the moved date and subsequent dates 
+          let currentDate = getNextWeekday(newStart); // Start with the new date adjusted to first valid weekday
+
+          for (let i = movedDateIndex; i < updatedEventDates.length; i++) {
+            updatedEventDates[i] = currentDate.toISOString().substring(0, 10);
+            
+            // Move to next day (consider weekdays only)
+            currentDate.setDate(currentDate.getDate() + 1);
+            currentDate = getNextWeekday(currentDate);
+          }
+
+          return {
+            ...job,
+            eventDates: updatedEventDates,
+          };
+        }
+      }
+      return job;
+    });
+
+    // Update the events after myJobs changes
+    updateEventsFromJobs(newJobs);
+    return newJobs;
+  });
 };
 
-  useIonViewDidEnter(() => {
-    setTimeout(() => {
+  const updateEventsFromJobs = (jobs: Job[]) => {
+    const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
+      const expandedEvents = job.eventDates.map(date => ({
+        jobID: job.jobID,
+        title: job.title,
+        date,
+        backgroundColor: job.backgroundColor,
+      }));
+      return acc.concat(expandedEvents);
+    }, []);
+    setEvents(updatedEvents);
+  };
+
+  const handleEventClick = (info: any) => {
+    const { event } = info;
+    console.log(event);
+  };
+
+  const handleEventResize = (info: any) => {
+    const { event } = info;
+
+    const startDate = event.start;
+    const endDate = event.end;
+
+    if (startDate && endDate) {
+      const differenceInTime = endDate.getTime() - startDate.getTime();
+      const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
+
+      const newEvents: CalendarEvent[] = [];
+      for (let i = 0; i < totalDays; i++) {
+        const newDate = new Date(startDate);
+        newDate.setDate(startDate.getDate() + i);
+
+        const dayOfWeek = newDate.getDay();
+        if (dayOfWeek === 6 || dayOfWeek === 0) {
+          continue;
+        }
+
+        newEvents.push({
+          jobID: event.extendedProps.jobID,
+          title: event.title,
+          date: newDate.toISOString().substring(0, 10),
+          backgroundColor: event.backgroundColor,
+        });
+      }
+
+      // Update myJobs array
+      setMyJobs(prevJobs => {
+        const newJobs = prevJobs.map(job => {
+          if (job.jobID === event.extendedProps.jobID) {
+            const newDates = newEvents.map(ev => ev.date);
+            return {
+              ...job,
+              eventDates: [...new Set([...job.eventDates, ...newDates])], // Merge and deduplicate dates.
+            };
+          }
+          return job;
+        });
+
+        updateEventsFromJobs(newJobs);
+        return newJobs;
+      });
+
       const calendarApi = calendarRef.current?.getApi();
       if (calendarApi) {
-        calendarApi.updateSize(); // Resize fix
-        calendarApi.gotoDate('2025-07-01'); // Force scroll to initialDate
+        event.remove();
+        newEvents.forEach(newEvent => calendarApi.addEvent(newEvent));
       }
-    }, 200); // Delay to allow Ionic to finish layout
-  });
+    }
+
+    console.log(`Resized event "${event.title}" was split into multiple events, excluding weekends.`);
+  };
 
   return (
     <IonPage>
@@ -85,15 +220,8 @@ const handleEventResize = (info: any) => {
             initialDate="2025-07-01"
             initialView="dayGridYear"
             height="90vh"
-            editable={true} // Enables event editing
-            events={[
-              { title: 'Project Launch', date: '2025-07-01' },
-              { title: 'Pro2', date: '2025-07-01' },
-              { title: 'Pro3', date: '2025-07-01' },
-              { title: 'Pro4', date: '2025-07-01' },
-              { title: 'Birthday', date: '2025-09-10' },
-              { title: 'Vacation', date: '2025-12-20' },
-            ]}
+            editable={true}
+            events={events}
             customButtons={{
               myTodayButton: {
                 text: 'Today',
@@ -105,8 +233,8 @@ const handleEventResize = (info: any) => {
               center: 'title',
               right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
             }}
-            eventDrop={handleEventDrop} // Handles event drop
-            eventClick={handleEventClick} // Handles event click
+            eventDrop={handleEventDrop}
+            eventClick={handleEventClick}
             eventResize={handleEventResize}
           />
         </div>
