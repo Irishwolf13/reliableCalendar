@@ -1,15 +1,20 @@
-import React, { useRef, useState } from 'react';
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton } from '@ionic/react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar,
+  IonButton, IonFooter, useIonViewDidEnter, IonBackButton
+} from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
-import './Calendar.css';
+
+// Import the controller's function
+import { subscribeToJobs, updateJobEventDatesByNumberID } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 
-// Define the job and event interfaces
+// Job and CalendarEvent interfaces remain unchanged
 interface Job {
   jobID: number;
   title: string;
@@ -28,30 +33,25 @@ const Calendar: React.FC = () => {
   const history = useHistory();
   const calendarRef = useRef<FullCalendar | null>(null);
 
-  // Use state for myJobs to keep updates in sync
-  const [myJobs, setMyJobs] = useState<Job[]>([
-    { jobID: 1, title: 'Project Launch', backgroundColor: 'green', eventDates: ['2025-07-01', '2025-07-02', '2025-07-03', '2025-07-04'] }
-  ]);
+  const [myJobs, setMyJobs] = useState<Job[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
 
-  // Set up state for the events based on myJobs
-  const [events, setEvents] = useState<CalendarEvent[]>(() =>
-    myJobs.reduce<CalendarEvent[]>((acc, job) => {
-      const expandedEvents = job.eventDates.map(date => ({
-        jobID: job.jobID,
-        title: job.title,
-        date,
-        backgroundColor: job.backgroundColor,
-      }));
-      return acc.concat(expandedEvents);
-    }, [])
-  );
+  useEffect(() => {
+    const unsubscribe = subscribeToJobs((jobs) => {
+      setMyJobs(jobs);
+      updateEventsFromJobs(jobs);
+    });
+
+    return () => unsubscribe(); // Cleanup subscription
+  }, []);
 
   useIonViewDidEnter(() => {
     setTimeout(() => {
       const calendarApi = calendarRef.current?.getApi();
       if (calendarApi) {
         calendarApi.updateSize();
-        calendarApi.gotoDate('2025-07-01');
+        // Navigate to today's date
+        calendarApi.gotoDate(new Date());
       }
     }, 200);
   });
@@ -73,7 +73,7 @@ const Calendar: React.FC = () => {
     }
   };
 
-  const handleEventDrop = (info: any) => {
+  const handleEventDrop = async (info: any) => {
   const { event } = info;
   const jobId = event.extendedProps.jobID;
 
@@ -83,14 +83,11 @@ const Calendar: React.FC = () => {
         const oldStartDateStr = info.oldEvent.start.toISOString().substring(0, 10);
         const newStart = new Date(event.start);
 
-        // Find the index of the moved date
         const movedDateIndex = job.eventDates.indexOf(oldStartDateStr);
-        
+
         if (movedDateIndex !== -1) {
-          // Clone the eventDates array
           const updatedEventDates = [...job.eventDates];
 
-          // Function to advance to the next weekday if needed
           const getNextWeekday = (date: Date): Date => {
             let nextDate = new Date(date);
             while (nextDate.getDay() === 6 || nextDate.getDay() === 0) {
@@ -99,16 +96,16 @@ const Calendar: React.FC = () => {
             return nextDate;
           };
 
-          // Update the moved date and subsequent dates 
-          let currentDate = getNextWeekday(newStart); // Start with the new date adjusted to first valid weekday
+          let currentDate = getNextWeekday(newStart);
 
           for (let i = movedDateIndex; i < updatedEventDates.length; i++) {
             updatedEventDates[i] = currentDate.toISOString().substring(0, 10);
-            
-            // Move to next day (consider weekdays only)
             currentDate.setDate(currentDate.getDate() + 1);
             currentDate = getNextWeekday(currentDate);
           }
+
+          // Update the Firestore document
+          updateJobEventDatesByNumberID(jobId, updatedEventDates);
 
           return {
             ...job,
@@ -119,7 +116,6 @@ const Calendar: React.FC = () => {
       return job;
     });
 
-    // Update the events after myJobs changes
     updateEventsFromJobs(newJobs);
     return newJobs;
   });
@@ -171,14 +167,13 @@ const Calendar: React.FC = () => {
         });
       }
 
-      // Update myJobs array
       setMyJobs(prevJobs => {
         const newJobs = prevJobs.map(job => {
           if (job.jobID === event.extendedProps.jobID) {
             const newDates = newEvents.map(ev => ev.date);
             return {
               ...job,
-              eventDates: [...new Set([...job.eventDates, ...newDates])], // Merge and deduplicate dates.
+              eventDates: [...new Set([...job.eventDates, ...newDates])],
             };
           }
           return job;
