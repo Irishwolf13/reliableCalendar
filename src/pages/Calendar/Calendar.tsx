@@ -8,7 +8,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
 
 // Import the controller's function
-import { subscribeToJobs, updateJobEventDatesByNumberID } from '../../firebase/controller';
+import { deleteLastEventByJobID, subscribeToJobs, updateJobEventDatesByNumberID } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -129,29 +129,39 @@ const Calendar: React.FC = () => {
     });
   };
 
-const updateEventsFromJobs = (jobs: Job[]) => {
-  const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
-    let remainingHours = job.hours; // Initialize with total job hours
+  const updateEventsFromJobs = (jobs: Job[]) => {
+    const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
+      let remainingHours = job.hours; // Initialize with total job hours
 
-    const expandedEvents = job.eventDates.map((date, index) => {
-      const eventHour = job.eventHours[index];
-      const eventTitle = `${job.title} : ${eventHour} / ${remainingHours}`;
-      remainingHours -= eventHour; // Subtract event hour from remaining hours
+      const expandedEvents = job.eventDates.map((date, index) => {
+        const eventHour = job.eventHours[index];
+        
+        // Use the minimum of eventHour or remainingHours for display title and calculation
+        const applicableHours = Math.min(eventHour, remainingHours);
+        const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
 
-      return {
-        jobID: job.jobID,
-        title: eventTitle,
-        date,
-        backgroundColor: job.backgroundColor,
-      };
-    });
+        // Adjust remainingHours only if it is more than or equal to applicableHours
+        if (remainingHours >= applicableHours) {
+          remainingHours -= applicableHours;
+        }
 
-    return acc.concat(expandedEvents);
-  }, []);
-  
-  setEvents(updatedEvents);
-};
+        // Determine background color based on remaining hours being negative
+        const backgroundColor =
+          remainingHours < 0 ? 'red' : job.backgroundColor;
 
+        return {
+          jobID: job.jobID,
+          title: eventTitle,
+          date,
+          backgroundColor, // Use determined background color
+        };
+      });
+
+      return acc.concat(expandedEvents);
+    }, []);
+
+    setEvents(updatedEvents);
+  };
 
   const handleEventResize = (info: any) => {
     const { event } = info;
@@ -196,8 +206,6 @@ const updateEventsFromJobs = (jobs: Job[]) => {
           }
           return job;
         });
-
-        updateEventsFromJobs(newJobs);
         return newJobs;
       });
 
@@ -207,10 +215,38 @@ const updateEventsFromJobs = (jobs: Job[]) => {
         newEvents.forEach(newEvent => calendarApi.addEvent(newEvent));
       }
     }
-
     console.log(`Resized event "${event.title}" was split into multiple events, excluding weekends.`);
   };
 
+
+const renderEventContent = (eventInfo: any) => {
+  const myJobID = eventInfo.event.extendedProps.jobID;
+  const myEventDate = eventInfo.event.startStr;
+
+  // Find the job associated with this event
+  const job = myJobs.find(j => j.jobID === myJobID);
+
+  // Check if this event is the last one for the given job
+  const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <span>{eventInfo.event.title}</span>
+      {isLastEvent && (
+        <button
+          style={{ marginLeft: 'auto' }}
+          onClick={() => handleDeleteEvent(eventInfo.event)}
+        >
+          X
+        </button>
+      )}
+    </div>
+  );
+};
+
+const handleDeleteEvent = (event:any) => {
+  deleteLastEventByJobID(event.extendedProps.jobID)
+};
 
   return (
     <IonPage>
@@ -250,6 +286,7 @@ const updateEventsFromJobs = (jobs: Job[]) => {
             eventDrop={handleEventDrop}
             eventClick={handleEventClick}
             eventResize={handleEventResize}
+            eventContent={renderEventContent}
           />
         </div>
       </IonContent>

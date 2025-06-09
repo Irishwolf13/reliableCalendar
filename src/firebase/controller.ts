@@ -68,8 +68,11 @@ export const updateJobEventDatesByNumberID = async (
         // Get current eventHours or initialize an empty array if not present
         let currentEventHours = jobData.eventHours || [];
 
+        console.log(jobData.hours)
+        console.log(jobData.eventHours)
         // Ensure eventHours matches the length of updatedEventDates
         while (currentEventHours.length < updatedEventDates.length) {
+          
           currentEventHours.push(perDayHours);
         }
 
@@ -85,5 +88,52 @@ export const updateJobEventDatesByNumberID = async (
     });
   } catch (error) {
     console.error('Error accessing Firestore:', error);
+  }
+};
+
+// Function to delete the last eventDate and eventHour by job ID
+export const deleteLastEventByJobID = async (jobId: number): Promise<void> => {
+  try {
+    if (!jobId) {
+      throw new Error('Invalid Job ID');
+    }
+
+    const jobsCollectionRef = collection(db, 'jobs');
+    const q = query(jobsCollectionRef, where('jobID', '==', jobId));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      console.error(`No job found with jobID: ${jobId}`);
+      return;
+    }
+
+    querySnapshot.forEach(async (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const docRef = docSnapshot.ref;
+        const jobData = docSnapshot.data();
+
+        // Extract current eventDates and eventHours
+        let currentEventDates = jobData.eventDates || [];
+        let currentEventHours = jobData.eventHours || [];
+
+        // Remove the last element from eventDates and eventHours arrays
+        if (currentEventDates.length > 0) {
+          currentEventDates.pop();
+        }
+        if (currentEventHours.length > 0) {
+          currentEventHours.pop();
+        }
+
+        // Update the job document in Firestore
+        await updateDoc(docRef, {
+          eventDates: currentEventDates,
+          eventHours: currentEventHours,
+        });
+
+        console.log('Successfully deleted the last event.');
+      }
+    });
+  } catch (error) {
+    console.error('Error updating Firestore:', error);
   }
 };
