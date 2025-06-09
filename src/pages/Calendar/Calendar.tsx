@@ -20,6 +20,8 @@ interface Job {
   title: string;
   backgroundColor: string;
   eventDates: string[];
+  eventHours: number[];
+  hours: number
 }
 
 interface CalendarEvent {
@@ -73,75 +75,86 @@ const Calendar: React.FC = () => {
     }
   };
 
-  const handleEventDrop = async (info: any) => {
-  const { event } = info;
-  const jobId = event.extendedProps.jobID;
-
-  setMyJobs((prevJobs) => {
-    const newJobs = prevJobs.map((job) => {
-      if (job.jobID === jobId) {
-        const oldStartDateStr = info.oldEvent.start.toISOString().substring(0, 10);
-        const newStart = new Date(event.start);
-
-        const movedDateIndex = job.eventDates.indexOf(oldStartDateStr);
-
-        if (movedDateIndex !== -1) {
-          const updatedEventDates = [...job.eventDates];
-
-          const getNextWeekday = (date: Date): Date => {
-            let nextDate = new Date(date);
-            while (nextDate.getDay() === 6 || nextDate.getDay() === 0) {
-              nextDate.setDate(nextDate.getDate() + 1);
-            }
-            return nextDate;
-          };
-
-          let currentDate = getNextWeekday(newStart);
-
-          for (let i = movedDateIndex; i < updatedEventDates.length; i++) {
-            updatedEventDates[i] = currentDate.toISOString().substring(0, 10);
-            currentDate.setDate(currentDate.getDate() + 1);
-            currentDate = getNextWeekday(currentDate);
-          }
-
-          // Update the Firestore document
-          updateJobEventDatesByNumberID(jobId, updatedEventDates);
-
-          return {
-            ...job,
-            eventDates: updatedEventDates,
-          };
-        }
-      }
-      return job;
-    });
-
-    updateEventsFromJobs(newJobs);
-    return newJobs;
-  });
-};
-
-  const updateEventsFromJobs = (jobs: Job[]) => {
-    const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
-      const expandedEvents = job.eventDates.map(date => ({
-        jobID: job.jobID,
-        title: job.title,
-        date,
-        backgroundColor: job.backgroundColor,
-      }));
-      return acc.concat(expandedEvents);
-    }, []);
-    setEvents(updatedEvents);
-  };
-
   const handleEventClick = (info: any) => {
     const { event } = info;
-    console.log(event);
+    console.log(event.extendedProps.jobID)
+    console.log(event.startStr);
   };
+
+  const handleEventDrop = async (info: any) => {
+    const { event } = info;
+    const jobId = event.extendedProps.jobID;
+
+    setMyJobs((prevJobs) => {
+      const newJobs = prevJobs.map((job) => {
+        if (job.jobID === jobId) {
+          const oldStartDateStr = info.oldEvent.start.toISOString().substring(0, 10);
+          const newStart = new Date(event.start);
+
+          const movedDateIndex = job.eventDates.indexOf(oldStartDateStr);
+
+          if (movedDateIndex !== -1) {
+            const updatedEventDates = [...job.eventDates];
+
+            const getNextWeekday = (date: Date): Date => {
+              let nextDate = new Date(date);
+              while (nextDate.getDay() === 6 || nextDate.getDay() === 0) {
+                nextDate.setDate(nextDate.getDate() + 1);
+              }
+              return nextDate;
+            };
+
+            let currentDate = getNextWeekday(newStart);
+
+            for (let i = movedDateIndex; i < updatedEventDates.length; i++) {
+              updatedEventDates[i] = currentDate.toISOString().substring(0, 10);
+              currentDate.setDate(currentDate.getDate() + 1);
+              currentDate = getNextWeekday(currentDate);
+            }
+
+            // Update the Firestore document
+            updateJobEventDatesByNumberID(jobId, updatedEventDates);
+
+            return {
+              ...job,
+              eventDates: updatedEventDates,
+            };
+          }
+        }
+        return job;
+      });
+
+      updateEventsFromJobs(newJobs);
+      return newJobs;
+    });
+  };
+
+const updateEventsFromJobs = (jobs: Job[]) => {
+  const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
+    let remainingHours = job.hours; // Initialize with total job hours
+
+    const expandedEvents = job.eventDates.map((date, index) => {
+      const eventHour = job.eventHours[index];
+      const eventTitle = `${job.title} : ${eventHour} / ${remainingHours}`;
+      remainingHours -= eventHour; // Subtract event hour from remaining hours
+
+      return {
+        jobID: job.jobID,
+        title: eventTitle,
+        date,
+        backgroundColor: job.backgroundColor,
+      };
+    });
+
+    return acc.concat(expandedEvents);
+  }, []);
+  
+  setEvents(updatedEvents);
+};
+
 
   const handleEventResize = (info: any) => {
     const { event } = info;
-
     const startDate = event.start;
     const endDate = event.end;
 
@@ -156,7 +169,7 @@ const Calendar: React.FC = () => {
 
         const dayOfWeek = newDate.getDay();
         if (dayOfWeek === 6 || dayOfWeek === 0) {
-          continue;
+          continue; // Skip weekends
         }
 
         newEvents.push({
@@ -171,9 +184,14 @@ const Calendar: React.FC = () => {
         const newJobs = prevJobs.map(job => {
           if (job.jobID === event.extendedProps.jobID) {
             const newDates = newEvents.map(ev => ev.date);
+            const updatedEventDates = [...new Set([...job.eventDates, ...newDates])];
+
+            // Update the Firestore document
+            updateJobEventDatesByNumberID(job.jobID, updatedEventDates);
+
             return {
               ...job,
-              eventDates: [...new Set([...job.eventDates, ...newDates])],
+              eventDates: updatedEventDates,
             };
           }
           return job;
@@ -192,6 +210,7 @@ const Calendar: React.FC = () => {
 
     console.log(`Resized event "${event.title}" was split into multiple events, excluding weekends.`);
   };
+
 
   return (
     <IonPage>
