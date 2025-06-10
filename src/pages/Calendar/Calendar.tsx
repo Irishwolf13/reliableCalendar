@@ -1,13 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar,
-  IonButton, IonFooter, useIonViewDidEnter, IonBackButton
-} from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
-
-// Import the controller's function
 import { deleteLastEventByJobID, subscribeToJobs, updateJobEventDatesByNumberID } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -44,15 +39,15 @@ const Calendar: React.FC = () => {
       updateEventsFromJobs(jobs);
     });
 
-    return () => unsubscribe(); // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
+  // Navigate to today's date
   useIonViewDidEnter(() => {
     setTimeout(() => {
       const calendarApi = calendarRef.current?.getApi();
       if (calendarApi) {
         calendarApi.updateSize();
-        // Navigate to today's date
         calendarApi.gotoDate(new Date());
       }
     }, 200);
@@ -75,15 +70,35 @@ const Calendar: React.FC = () => {
     }
   };
 
+  // Start of Event Handling
   const handleEventClick = (info: any) => {
-    const { event } = info;
-    console.log(event.extendedProps.jobID)
-    console.log(event.startStr);
+    // const { event } = info;
+    // console.log(event.extendedProps.jobID)
+    // console.log(event.startStr);
   };
 
+  // Handle Drop Event
   const handleEventDrop = async (info: any) => {
     const { event } = info;
+    const myStartDate = info.event.startStr
+    const myOldStartDate = info.oldEvent.startStr
     const jobId = event.extendedProps.jobID;
+    const jobToUpdate = myJobs.find((job) => job.jobID === jobId);
+
+    if (jobToUpdate) {
+      const eventDateFound = jobToUpdate.eventDates.includes(myStartDate);
+      const firstEventDate = jobToUpdate.eventDates[0];
+      if (myOldStartDate !== firstEventDate ) {
+        if (eventDateFound && new Date(myOldStartDate) > new Date(myStartDate)) {
+          info.revert();
+          return;
+        }
+        if (new Date(myStartDate) < new Date(firstEventDate)) {
+          info.revert();
+          return;
+        }
+      } 
+    }
 
     setMyJobs((prevJobs) => {
       const newJobs = prevJobs.map((job) => {
@@ -112,7 +127,6 @@ const Calendar: React.FC = () => {
               currentDate = getNextWeekday(currentDate);
             }
 
-            // Update the Firestore document
             updateJobEventDatesByNumberID(jobId, updatedEventDates);
 
             return {
@@ -129,6 +143,7 @@ const Calendar: React.FC = () => {
     });
   };
 
+  // Helper function for updatting the back end
   const updateEventsFromJobs = (jobs: Job[]) => {
     const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
       let remainingHours = job.hours; // Initialize with total job hours
@@ -153,7 +168,7 @@ const Calendar: React.FC = () => {
           jobID: job.jobID,
           title: eventTitle,
           date,
-          backgroundColor, // Use determined background color
+          backgroundColor,
         };
       });
 
@@ -163,8 +178,16 @@ const Calendar: React.FC = () => {
     setEvents(updatedEvents);
   };
 
+  // Modify the handleEventResize function to check for the last event
   const handleEventResize = (info: any) => {
     const { event } = info;
+    const jobID = event.extendedProps.jobID;
+    const job = myJobs.find(j => j.jobID === jobID);
+    const isLastEvent = job?.eventDates[job.eventDates.length - 1] === event.startStr;
+
+    // If not the last event, prevent resizing
+    if (!isLastEvent) { info.revert(); return; }
+
     const startDate = event.start;
     const endDate = event.end;
 
@@ -218,35 +241,47 @@ const Calendar: React.FC = () => {
     console.log(`Resized event "${event.title}" was split into multiple events, excluding weekends.`);
   };
 
+  const renderDeleteButton = (eventInfo: any) => {
+    const myJobID = eventInfo.event.extendedProps.jobID;
+    const myEventDate = eventInfo.event.startStr;
 
-const renderEventContent = (eventInfo: any) => {
-  const myJobID = eventInfo.event.extendedProps.jobID;
-  const myEventDate = eventInfo.event.startStr;
+    // Find the job associated with this event
+    const job = myJobs.find(j => j.jobID === myJobID);
 
-  // Find the job associated with this event
-  const job = myJobs.find(j => j.jobID === myJobID);
+    // Check if this event is the last one for the given job
+    const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
 
-  // Check if this event is the last one for the given job
-  const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <span>{eventInfo.event.title}</span>
+        {isLastEvent && (
+          <button
+            style={{ marginLeft: 'auto', marginRight: '5px' }}
+            onClick={() => handleDeleteEvent(eventInfo.event)}
+          >
+            X
+          </button>
+        )}
+      </div>
+    );
+  };
 
-  return (
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      <span>{eventInfo.event.title}</span>
-      {isLastEvent && (
-        <button
-          style={{ marginLeft: 'auto' }}
-          onClick={() => handleDeleteEvent(eventInfo.event)}
-        >
-          X
-        </button>
-      )}
-    </div>
-  );
-};
+  //////////////////////////////  ALERT MODAL  //////////////////////////////
+  const [showAlert, setShowAlert] = useState(false);
+  const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
 
-const handleDeleteEvent = (event:any) => {
-  deleteLastEventByJobID(event.extendedProps.jobID)
-};
+  const handleDeleteEvent = (event: any) => {
+    setSelectedEventID(event.extendedProps.jobID);
+    setShowAlert(true);
+  };
+
+  const confirmDelete = () => {
+    if (selectedEventID !== null) {
+      deleteLastEventByJobID(selectedEventID);
+      setSelectedEventID(null); // Clear selected event ID after deletion
+    }
+    setShowAlert(false);
+  };
 
   return (
     <IonPage>
@@ -286,9 +321,29 @@ const handleDeleteEvent = (event:any) => {
             eventDrop={handleEventDrop}
             eventClick={handleEventClick}
             eventResize={handleEventResize}
-            eventContent={renderEventContent}
+            eventContent={renderDeleteButton}
           />
         </div>
+
+        <IonAlert
+        isOpen={showAlert}
+        onDidDismiss={() => setShowAlert(false)}
+        header={'Confirm Delete'}
+        message={'Are you sure you want to delete this event?'}
+        buttons={[
+          {
+            text: 'Cancel',
+            role: 'cancel',
+            handler: () => {
+              setShowAlert(false);
+            },
+          },
+          {
+            text: 'Delete',
+            handler: confirmDelete,
+          },
+        ]}
+      />
       </IonContent>
 
       <IonFooter>
