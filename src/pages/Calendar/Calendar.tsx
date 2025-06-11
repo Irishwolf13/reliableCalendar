@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu } from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
-import { deleteLastEventByJobID, subscribeToJobs, updateJobEventDatesByNumberID } from '../../firebase/controller';
+import { deleteLastEventByJobID, subscribeToJobs, updateJobEventDatesByNumberID, updateShippingDate } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -19,7 +19,8 @@ interface Job {
   backgroundColor: string;
   eventDates: string[];
   eventHours: number[];
-  hours: number
+  hours: number;
+  shippingDate: string;
 }
 
 interface CalendarEvent {
@@ -35,6 +36,8 @@ const Calendar: React.FC = () => {
 
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [showToast, setShowToast] = useState(false);
+  const [toastText, setToastText] = useState('')
 
   const [myTitle, setMyTitle] = useState('')
   const [myJobNumber, setMyJobNumber] = useState(0)
@@ -81,94 +84,137 @@ const Calendar: React.FC = () => {
   const handleEventClick = (info: any) => {
     const { event } = info;
     const [titleBeforeColon] = event.title.split(':');
-    console.log(event);
-
-    console.log(myJobs);
     setMyTitle(titleBeforeColon);
     setMyJobNumber(event.extendedProps.jobID);
 
-    // Parse the date string into a Date object
-    const date = new Date(event.startStr);
-    
-    // Add one day to the date
-    date.setDate(date.getDate() + 1);
+    const date = new Date(event.startStr); // Parse the date string into a Date object
+    date.setDate(date.getDate() + 1); // Add one day to the date
 
     // Format the date as 'Month day, year'
-    const options: Intl.DateTimeFormatOptions = { 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
-    };
+    const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric'};
     const formattedDate = date.toLocaleDateString('en-US', options);
 
     setMyJobDate(formattedDate);
     openFirstMenu();
   };
 
-  // Handle Drop Event
+  //////////////////////////////  DROP EVENTS  //////////////////////////////
   const handleEventDrop = async (info: any) => {
     const { event } = info;
-    const myStartDate = info.event.startStr
-    const myOldStartDate = info.oldEvent.startStr
     const jobId = event.extendedProps.jobID;
+    const myStartDate = info.event.startStr;
+
     const jobToUpdate = myJobs.find((job) => job.jobID === jobId);
+    
+    if (!jobToUpdate) return;
 
-    if (jobToUpdate) {
-      const eventDateFound = jobToUpdate.eventDates.includes(myStartDate);
-      const firstEventDate = jobToUpdate.eventDates[0];
-      if (myOldStartDate !== firstEventDate ) {
-        if (eventDateFound && new Date(myOldStartDate) > new Date(myStartDate)) {
+    // Check if this is a shipping date event
+    const isShippingDateEvent = jobToUpdate.shippingDate === info.oldEvent.startStr;
+
+    if (isShippingDateEvent) {
+      try {
+        // Prevent moving the shipping date on or before any event date
+        const invalidShippingDate = jobToUpdate.eventDates.some(
+          (eventDate) => new Date(myStartDate) <= new Date(eventDate)
+        );
+
+        if (invalidShippingDate) {
+          setToastText("Move rejected: Shipping date cannot be on or before any event date.");
+          setShowToast(true)
           info.revert();
-          return;
+          return; // Exit early if the move is invalid
         }
-        if (new Date(myStartDate) < new Date(firstEventDate)) {
-          info.revert();
-          return;
-        }
-      } 
-    }
-    // If it passes the checks, then adjust the job events
-    setMyJobs((prevJobs) => {
-      const newJobs = prevJobs.map((job) => {
-        if (job.jobID === jobId) {
-          const oldStartDateStr = info.oldEvent.start.toISOString().substring(0, 10);
-          const newStart = new Date(event.start);
 
-          const movedDateIndex = job.eventDates.indexOf(oldStartDateStr);
+        // Update the backend with the new shipping date
+        await updateShippingDate(jobId, myStartDate);
 
-          if (movedDateIndex !== -1) {
-            const updatedEventDates = [...job.eventDates];
+        // Update only the shipping date for the job in the frontend
+        setMyJobs((prevJobs) =>
+          prevJobs.map((job) =>
+            job.jobID === jobId
+              ? { ...job, shippingDate: myStartDate }
+              : job
+          )
+        );
 
-            const getNextWeekday = (date: Date): Date => {
-              let nextDate = new Date(date);
-              while (nextDate.getDay() === 6 || nextDate.getDay() === 0) {
-                nextDate.setDate(nextDate.getDate() + 1);
-              }
-              return nextDate;
-            };
-
-            let currentDate = getNextWeekday(newStart);
-
-            for (let i = movedDateIndex; i < updatedEventDates.length; i++) {
-              updatedEventDates[i] = currentDate.toISOString().substring(0, 10);
-              currentDate.setDate(currentDate.getDate() + 1);
-              currentDate = getNextWeekday(currentDate);
-            }
-
-            updateJobEventDatesByNumberID(jobId, updatedEventDates);
-
-            return {
-              ...job,
-              eventDates: updatedEventDates,
-            };
+        // console.log(`Updated shipping date for job ${jobId} to ${myStartDate}`);
+      } catch (error) {
+        console.error('Failed to update shipping date:', error);
+        info.revert();
+      }
+    } else {
+      // Existing logic for handling regular event drops
+      if (jobToUpdate) {
+        const eventDateFound = jobToUpdate.eventDates.includes(myStartDate);
+        const firstEventDate = jobToUpdate.eventDates[0];
+        
+        if (info.oldEvent.startStr !== firstEventDate) {
+          if (eventDateFound && new Date(info.oldEvent.startStr) > new Date(myStartDate)) {
+            info.revert();
+            return;
+          }
+          if (new Date(myStartDate) < new Date(firstEventDate)) {
+            info.revert();
+            return;
           }
         }
-        return job;
-      });
 
-      updateEventsFromJobs(newJobs);
-      return newJobs;
-    });
+        // Logic to update event dates and further checks
+        setMyJobs((prevJobs) => {
+          const newJobs = prevJobs.map((job) => {
+            if (job.jobID === jobId) {
+              const oldStartDateStr = info.oldEvent.start.toISOString().substring(0, 10);
+              const newStart = new Date(event.start);
+
+              const movedDateIndex = job.eventDates.indexOf(oldStartDateStr);
+
+              if (movedDateIndex !== -1) {
+                const updatedEventDates = [...job.eventDates];
+
+                const getNextWeekday = (date: Date): Date => {
+                  let nextDate = new Date(date);
+                  while (nextDate.getDay() === 6 || nextDate.getDay() === 0) {
+                    nextDate.setDate(nextDate.getDate() + 1);
+                  }
+                  return nextDate;
+                };
+
+                let currentDate = getNextWeekday(newStart);
+
+                for (let i = movedDateIndex; i < updatedEventDates.length; i++) {
+                  updatedEventDates[i] = currentDate.toISOString().substring(0, 10);
+                  currentDate.setDate(currentDate.getDate() + 1);
+                  currentDate = getNextWeekday(currentDate);
+                }
+                
+                const shippingDate = new Date(job.shippingDate);
+                const invalidAfterMove = updatedEventDates.some(
+                  (eventDate) => new Date(eventDate) >= shippingDate
+                );
+
+                if (invalidAfterMove) {
+                  setToastText("Move rejected: Updated event dates would be on or after the shipping date.");
+                  setShowToast(true)
+                  info.revert();
+                  return job; // Return early if move should be rejected
+                }
+                
+                updateJobEventDatesByNumberID(jobId, updatedEventDates);
+
+                return {
+                  ...job,
+                  eventDates: updatedEventDates,
+                };
+              }
+            }
+            return job;
+          });
+
+          updateEventsFromJobs(newJobs);
+          return newJobs;
+        });
+      }
+    }
   };
 
   // Helper function for updatting the back end
@@ -176,29 +222,34 @@ const Calendar: React.FC = () => {
     const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
       let remainingHours = job.hours; // Initialize with total job hours
 
+      // Map regular job dates into events
       const expandedEvents = job.eventDates.map((date, index) => {
         const eventHour = job.eventHours[index];
-        
+
         // Use the minimum of eventHour or remainingHours for display title and calculation
         const applicableHours = Math.min(eventHour, remainingHours);
         const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
 
         // Adjust remainingHours only if it is more than or equal to applicableHours
-        if (remainingHours >= applicableHours) {
-          remainingHours -= applicableHours;
-        }
-
-        // Determine background color based on remaining hours being negative
-        const backgroundColor =
-          remainingHours < 0 ? 'red' : job.backgroundColor;
+        if (remainingHours >= applicableHours) { remainingHours -= applicableHours; }
 
         return {
           jobID: job.jobID,
           title: eventTitle,
           date,
-          backgroundColor,
+          backgroundColor: job.backgroundColor,
         };
       });
+
+      // Add a special event for shipping date
+      if (job.shippingDate) {
+        expandedEvents.push({
+          jobID: job.jobID,
+          title: `${job.title}: Shipping Date`,
+          date: job.shippingDate,
+          backgroundColor: job.backgroundColor, // A distinct color for shipping events
+        });
+      }
 
       return acc.concat(expandedEvents);
     }, []);
@@ -206,93 +257,106 @@ const Calendar: React.FC = () => {
     setEvents(updatedEvents);
   };
 
-  // Modify the handleEventResize function to check for the last event
+  //////////////////////////////  RESIZE EVENTS  //////////////////////////////
   const handleEventResize = (info: any) => {
     const { event } = info;
     const jobID = event.extendedProps.jobID;
     const job = myJobs.find(j => j.jobID === jobID);
     const isLastEvent = job?.eventDates[job.eventDates.length - 1] === event.startStr;
-
-    // If not the last event, prevent resizing
-    if (!isLastEvent) { info.revert(); return; }
-
-    const startDate = event.start;
-    const endDate = event.end;
-
-    if (startDate && endDate) {
-      const differenceInTime = endDate.getTime() - startDate.getTime();
-      const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
-
-      const newEvents: CalendarEvent[] = [];
-      for (let i = 0; i < totalDays; i++) {
-        const newDate = new Date(startDate);
-        newDate.setDate(startDate.getDate() + i);
-
-        const dayOfWeek = newDate.getDay();
-        if (dayOfWeek === 6 || dayOfWeek === 0) {
-          continue; // Skip weekends
-        }
-
-        newEvents.push({
-          jobID: event.extendedProps.jobID,
-          title: event.title,
-          date: newDate.toISOString().substring(0, 10),
-          backgroundColor: event.backgroundColor,
-        });
-      }
-
-      setMyJobs(prevJobs => {
-        const newJobs = prevJobs.map(job => {
-          if (job.jobID === event.extendedProps.jobID) {
-            const newDates = newEvents.map(ev => ev.date);
-            const updatedEventDates = [...new Set([...job.eventDates, ...newDates])];
-
-            // Update the Firestore document
-            updateJobEventDatesByNumberID(job.jobID, updatedEventDates);
-
-            return {
-              ...job,
-              eventDates: updatedEventDates,
+    if (job) {
+      // If not the last event, prevent resizing
+      if (!isLastEvent) {
+        info.revert();
+        return;
+      };
+      
+      const startDate = event.start;
+      const endDate = event.end;
+      
+      if (startDate && endDate) {
+        // Ensure resizing does not go onto or beyond the shipping date
+        const shippingDate = new Date(job.shippingDate);
+        shippingDate.setDate(shippingDate.getDate() + 1);
+        if (endDate >= shippingDate) {
+          setToastText("Resize rejected: Resizing would extend onto or beyond the shipping date.");
+          setShowToast(true)
+          info.revert();
+          return;
+        };
+    
+        const differenceInTime = endDate.getTime() - startDate.getTime();
+        const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
+    
+        const newEvents: CalendarEvent[] = [];
+        for (let i = 0; i < totalDays; i++) {
+          const newDate = new Date(startDate);
+          newDate.setDate(startDate.getDate() + i);
+    
+          const dayOfWeek = newDate.getDay();
+          if (dayOfWeek === 6 || dayOfWeek === 0) {
+            continue; // Skip weekends
+          };
+    
+          newEvents.push({
+            jobID: event.extendedProps.jobID,
+            title: event.title,
+            date: newDate.toISOString().substring(0, 10),
+            backgroundColor: event.backgroundColor,
+          });
+        };
+    
+        setMyJobs(prevJobs => {
+          const newJobs = prevJobs.map(job => {
+            if (job.jobID === event.extendedProps.jobID) {
+              const newDates = newEvents.map(ev => ev.date);
+              const updatedEventDates = [...new Set([...job.eventDates, ...newDates])];
+    
+              // Update the Firestore document
+              updateJobEventDatesByNumberID(job.jobID, updatedEventDates);
+    
+              return {
+                ...job,
+                eventDates: updatedEventDates,
+              };
             };
-          }
-          return job;
+            return job;
+          });
+          return newJobs;
         });
-        return newJobs;
-      });
-
-      const calendarApi = calendarRef.current?.getApi();
-      if (calendarApi) {
-        event.remove();
-        newEvents.forEach(newEvent => calendarApi.addEvent(newEvent));
-      }
-    }
-    console.log(`Resized event "${event.title}" was split into multiple events, excluding weekends.`);
+    
+        const calendarApi = calendarRef.current?.getApi();
+        if (calendarApi) {
+          event.remove();
+          newEvents.forEach(newEvent => calendarApi.addEvent(newEvent));
+        };
+      };
+    };
   };
 
   //////////////////////////////  DELETE EVENT  //////////////////////////////
-const renderDeleteButton = (eventInfo: any) => {
-  const myJobID = eventInfo.event.extendedProps.jobID;
-  const myEventDate = eventInfo.event.startStr;
+  const renderDeleteButton = (eventInfo: any) => {
+    const myJobID = eventInfo.event.extendedProps.jobID;
+    const myEventDate = eventInfo.event.startStr;
 
-  const job = myJobs.find(j => j.jobID === myJobID);
-  const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
+    const job = myJobs.find(j => j.jobID === myJobID);
+    const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
 
-  return (
-    <div style={{ display: 'flex', alignItems: 'center' }}>
-      <span>{eventInfo.event.title}</span>
-      {isLastEvent && (
-        <button className='deleteButton'
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent event click from also triggering
-            handleDeleteEvent(eventInfo.event);
-          }}
-        >
-          X
-        </button>
-      )}
-    </div>
-  );
-};
+    return (
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <span>{eventInfo.event.title}</span>
+        {isLastEvent && (
+          <button className='deleteButton'
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent event click from also triggering
+              handleDeleteEvent(eventInfo.event);
+            }}
+          >
+            X
+          </button>
+        )}
+      </div>
+    );
+  };
 
   //////////////////////////////  ALERT MODAL  //////////////////////////////
   const [showAlert, setShowAlert] = useState(false);
@@ -381,31 +445,35 @@ const renderDeleteButton = (eventInfo: any) => {
           <IonButton expand="block" onClick={openEndMenu}>
             Open End Menu
           </IonButton> */}
-          <div className='calendarHolder'>
-            <FullCalendar
-              ref={calendarRef}
-              plugins={[dayGridPlugin, interactionPlugin]}
-              initialDate="2025-07-01"
-              initialView="dayGridYear"
-              height="87vh"
-              editable={true}
-              events={events}
-              customButtons={{
-                myTodayButton: {
-                  text: 'Today',
-                  click: handleTodayButtonClick,
-                }
-              }}
-              headerToolbar={{
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
-              }}
-              eventDrop={handleEventDrop}
-              eventClick={handleEventClick}
-              eventResize={handleEventResize}
-              eventContent={renderDeleteButton}
-              />
+          <div className='mainPageHolder'>
+            <div className='frank'>Frank</div>
+            <div className='calendarHolder'>
+              <FullCalendar
+                ref={calendarRef}
+                plugins={[dayGridPlugin, interactionPlugin]}
+                initialDate="2025-07-01"
+                initialView="dayGridYear"
+                height="87vh"
+                editable={true}
+                events={events}
+                customButtons={{
+                  myTodayButton: {
+                    text: 'Today',
+                    click: handleTodayButtonClick,
+                  }
+                }}
+                headerToolbar={{
+                  left: 'prev,next today',
+                  center: 'title',
+                  right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
+                }}
+                eventDrop={handleEventDrop}
+                eventClick={handleEventClick}
+                eventResize={handleEventResize}
+                eventContent={renderDeleteButton}
+                />
+            </div>
+            
           </div>
 
           <IonAlert
@@ -429,6 +497,12 @@ const renderDeleteButton = (eventInfo: any) => {
           />
         </IonContent>
 
+        <IonToast
+          isOpen={showToast}
+          message={toastText}
+          duration={3000}
+          onDidDismiss={() => setShowToast(false)} // Reset the toast visibility
+        />
         <IonFooter>
           <IonToolbar>
             <IonTitle size="small">© 2025 Dancing Goat Studios</IonTitle>

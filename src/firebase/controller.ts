@@ -9,6 +9,7 @@ interface Job {
   eventDates: string[];
   eventHours: number[];
   hours: number;
+  shippingDate: string;
 }
 
 // Function to subscribe to jobs collection
@@ -27,6 +28,7 @@ export const subscribeToJobs = (callback: (jobs: Job[]) => void): (() => void) =
         eventDates: data.eventDates,
         eventHours: data.eventHours,
         hours: data.hours,
+        shippingDate: data.shippingDate,
       });
     });
     callback(jobs);
@@ -132,5 +134,42 @@ export const deleteLastEventByJobID = async (jobId: number): Promise<void> => {
     });
   } catch (error) {
     console.error('Error updating Firestore:', error);
+  }
+};
+
+
+
+export const updateShippingDate = async (
+  jobId: number,
+  newShippingDate: string
+): Promise<void> => {
+  try {
+    if (!jobId) {
+      throw new Error('Invalid Job ID');
+    }
+
+    const jobsCollectionRef = collection(db, 'jobs');
+    const q = query(jobsCollectionRef, where('jobID', '==', jobId));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      console.error(`No job found with jobID: ${jobId}`);
+      return;
+    }
+
+    querySnapshot.forEach(async (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const docRef = docSnapshot.ref;
+
+        // Update the shippingDate field in Firestore
+        await updateDoc(docRef, {
+          shippingDate: newShippingDate,
+        });
+
+        console.log(`Successfully updated the shipping date to ${newShippingDate} for job ${jobId}.`);
+      }
+    });
+  } catch (error) {
+    console.error('Error updating shippingDate in Firestore:', error);
   }
 };
