@@ -1,6 +1,9 @@
 import { db } from "../firebase/config"; // Ensure the correct path is used
 import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs } from "firebase/firestore";
 
+
+//////////////////////////////  GENERAL FUNCTIONS  //////////////////////////////
+
 // Define the Job interface if not already defined here or imported
 interface Job {
   jobID: number;
@@ -34,6 +37,9 @@ export const subscribeToJobs = (callback: (jobs: Job[]) => void): (() => void) =
     callback(jobs);
   });
 };
+
+
+//////////////////////////////  CALENDAR FUNCTIONS  //////////////////////////////
 
 export const updateJobEventDatesByNumberID = async (
   jobId: number,
@@ -137,8 +143,6 @@ export const deleteLastEventByJobID = async (jobId: number): Promise<void> => {
   }
 };
 
-
-
 export const updateShippingDate = async (
   jobId: number,
   newShippingDate: string
@@ -173,3 +177,6 @@ export const updateShippingDate = async (
     console.error('Error updating shippingDate in Firestore:', error);
   }
 };
+
+//////////////////////////////  SITE INFOMATION FUNCTIONS  //////////////////////////////
+

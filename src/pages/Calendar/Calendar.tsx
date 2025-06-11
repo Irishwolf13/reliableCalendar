@@ -337,7 +337,6 @@ const Calendar: React.FC = () => {
   const renderDeleteButton = (eventInfo: any) => {
     const myJobID = eventInfo.event.extendedProps.jobID;
     const myEventDate = eventInfo.event.startStr;
-
     const job = myJobs.find(j => j.jobID === myJobID);
     const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
 
@@ -350,15 +349,13 @@ const Calendar: React.FC = () => {
               e.stopPropagation(); // Prevent event click from also triggering
               handleDeleteEvent(eventInfo.event);
             }}
-          >
-            X
-          </button>
+          > X </button>
         )}
       </div>
     );
   };
 
-  //////////////////////////////  ALERT MODAL  //////////////////////////////
+  //////////////////////////////  DELETE MODAL  //////////////////////////////
   const [showAlert, setShowAlert] = useState(false);
   const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
 
@@ -428,7 +425,7 @@ const Calendar: React.FC = () => {
             <IonButtons slot="start">
               <IonBackButton></IonBackButton>
             </IonButtons>
-            <IonTitle>Calendar</IonTitle>
+              <IonTitle>Reliable Calendar</IonTitle>
             <IonButtons slot="end">
               <IonButton onClick={handleLogout}>Logout</IonButton>
             </IonButtons>
