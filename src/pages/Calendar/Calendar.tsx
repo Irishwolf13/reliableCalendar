@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert } from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
@@ -8,6 +8,9 @@ import { deleteLastEventByJobID, subscribeToJobs, updateJobEventDatesByNumberID 
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
+
+import { menuController } from '@ionic/core/components';
+import './Calendar.css'
 
 // Job and CalendarEvent interfaces remain unchanged
 interface Job {
@@ -32,6 +35,10 @@ const Calendar: React.FC = () => {
 
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  const [myTitle, setMyTitle] = useState('')
+  const [myJobNumber, setMyJobNumber] = useState(0)
+  const [myJobDate, setMyJobDate] = useState('')
 
   useEffect(() => {
     const unsubscribe = subscribeToJobs((jobs) => {
@@ -72,9 +79,30 @@ const Calendar: React.FC = () => {
 
   // Start of Event Handling
   const handleEventClick = (info: any) => {
-    // const { event } = info;
-    // console.log(event.extendedProps.jobID)
-    // console.log(event.startStr);
+    const { event } = info;
+    const [titleBeforeColon] = event.title.split(':');
+    console.log(event);
+
+    console.log(myJobs);
+    setMyTitle(titleBeforeColon);
+    setMyJobNumber(event.extendedProps.jobID);
+
+    // Parse the date string into a Date object
+    const date = new Date(event.startStr);
+    
+    // Add one day to the date
+    date.setDate(date.getDate() + 1);
+
+    // Format the date as 'Month day, year'
+    const options: Intl.DateTimeFormatOptions = { 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    };
+    const formattedDate = date.toLocaleDateString('en-US', options);
+
+    setMyJobDate(formattedDate);
+    openFirstMenu();
   };
 
   // Handle Drop Event
@@ -99,7 +127,7 @@ const Calendar: React.FC = () => {
         }
       } 
     }
-
+    // If it passes the checks, then adjust the job events
     setMyJobs((prevJobs) => {
       const newJobs = prevJobs.map((job) => {
         if (job.jobID === jobId) {
@@ -241,30 +269,30 @@ const Calendar: React.FC = () => {
     console.log(`Resized event "${event.title}" was split into multiple events, excluding weekends.`);
   };
 
-  const renderDeleteButton = (eventInfo: any) => {
-    const myJobID = eventInfo.event.extendedProps.jobID;
-    const myEventDate = eventInfo.event.startStr;
+  //////////////////////////////  DELETE EVENT  //////////////////////////////
+const renderDeleteButton = (eventInfo: any) => {
+  const myJobID = eventInfo.event.extendedProps.jobID;
+  const myEventDate = eventInfo.event.startStr;
 
-    // Find the job associated with this event
-    const job = myJobs.find(j => j.jobID === myJobID);
+  const job = myJobs.find(j => j.jobID === myJobID);
+  const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
 
-    // Check if this event is the last one for the given job
-    const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
-
-    return (
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <span>{eventInfo.event.title}</span>
-        {isLastEvent && (
-          <button
-            style={{ marginLeft: 'auto', marginRight: '5px' }}
-            onClick={() => handleDeleteEvent(eventInfo.event)}
-          >
-            X
-          </button>
-        )}
-      </div>
-    );
-  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <span>{eventInfo.event.title}</span>
+      {isLastEvent && (
+        <button className='deleteButton'
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent event click from also triggering
+            handleDeleteEvent(eventInfo.event);
+          }}
+        >
+          X
+        </button>
+      )}
+    </div>
+  );
+};
 
   //////////////////////////////  ALERT MODAL  //////////////////////////////
   const [showAlert, setShowAlert] = useState(false);
@@ -283,75 +311,131 @@ const Calendar: React.FC = () => {
     setShowAlert(false);
   };
 
+  //////////////////////////////  SIDE MENUS  //////////////////////////////
+  async function openFirstMenu() {
+    await menuController.open('first-menu');
+  }
+
+  // async function openSecondMenu() {
+  //   await menuController.open('second-menu');
+  // }
+
+  // async function openEndMenu() {
+  //   await menuController.open('end');
+  // }
+
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonButtons slot="start">
-            <IonBackButton></IonBackButton>
-          </IonButtons>
-          <IonTitle>Calendar</IonTitle>
-          <IonButtons slot="end">
-            <IonButton onClick={handleLogout}>Logout</IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+    <>
+      <IonMenu menuId="first-menu" contentId="main-content">
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>{myJobDate}</IonTitle>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent className="ion-padding">
+          <div>{myTitle}</div>
+          <div>
+            {myJobNumber}
+          </div>
+        </IonContent>
+      </IonMenu>
 
-      <IonContent>
-        <div className='calendarHolder'>
-          <FullCalendar
-            ref={calendarRef}
-            plugins={[dayGridPlugin, interactionPlugin]}
-            initialDate="2025-07-01"
-            initialView="dayGridYear"
-            height="90vh"
-            editable={true}
-            events={events}
-            customButtons={{
-              myTodayButton: {
-                text: 'Today',
-                click: handleTodayButtonClick,
-              }
-            }}
-            headerToolbar={{
-              left: 'prev,next today',
-              center: 'title',
-              right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
-            }}
-            eventDrop={handleEventDrop}
-            eventClick={handleEventClick}
-            eventResize={handleEventResize}
-            eventContent={renderDeleteButton}
-          />
-        </div>
+      {/* <IonMenu menuId="second-menu" contentId="main-content">
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>Second Menu</IonTitle>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent className="ion-padding">This is the second menu content.</IonContent>
+      </IonMenu>
 
-        <IonAlert
-        isOpen={showAlert}
-        onDidDismiss={() => setShowAlert(false)}
-        header={'Confirm Delete'}
-        message={'Are you sure you want to delete this event?'}
-        buttons={[
-          {
-            text: 'Cancel',
-            role: 'cancel',
-            handler: () => {
-              setShowAlert(false);
+      <IonMenu side="end" contentId="main-content">
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>End Menu</IonTitle>
+          </IonToolbar>
+        </IonHeader>
+        <IonContent className="ion-padding">This is the end menu content.</IonContent>
+      </IonMenu> */}
+
+      <IonPage id="main-content" className='mainContent'>
+        <IonHeader>
+          <IonToolbar>
+            <IonButtons slot="start">
+              <IonBackButton></IonBackButton>
+            </IonButtons>
+            <IonTitle>Calendar</IonTitle>
+            <IonButtons slot="end">
+              <IonButton onClick={handleLogout}>Logout</IonButton>
+            </IonButtons>
+          </IonToolbar>
+        </IonHeader>
+
+        <IonContent>
+          {/* <IonButton expand="block" onClick={openFirstMenu}>
+            Open First Menu
+          </IonButton>
+          <IonButton expand="block" onClick={openSecondMenu}>
+            Open Second Menu
+          </IonButton>
+          <IonButton expand="block" onClick={openEndMenu}>
+            Open End Menu
+          </IonButton> */}
+          <div className='calendarHolder'>
+            <FullCalendar
+              ref={calendarRef}
+              plugins={[dayGridPlugin, interactionPlugin]}
+              initialDate="2025-07-01"
+              initialView="dayGridYear"
+              height="87vh"
+              editable={true}
+              events={events}
+              customButtons={{
+                myTodayButton: {
+                  text: 'Today',
+                  click: handleTodayButtonClick,
+                }
+              }}
+              headerToolbar={{
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
+              }}
+              eventDrop={handleEventDrop}
+              eventClick={handleEventClick}
+              eventResize={handleEventResize}
+              eventContent={renderDeleteButton}
+              />
+          </div>
+
+          <IonAlert
+          isOpen={showAlert}
+          onDidDismiss={() => setShowAlert(false)}
+          header={'Confirm Delete'}
+          message={'Are you sure you want to delete this event?'}
+          buttons={[
+            {
+              text: 'Cancel',
+              role: 'cancel',
+              handler: () => {
+                setShowAlert(false);
+              },
             },
-          },
-          {
-            text: 'Delete',
-            handler: confirmDelete,
-          },
-        ]}
-      />
-      </IonContent>
+            {
+              text: 'Delete',
+              handler: confirmDelete,
+            },
+          ]}
+          />
+        </IonContent>
 
-      <IonFooter>
-        <IonToolbar>
-          <IonTitle size="small">© 2025 Dancing Goat Studios</IonTitle>
-        </IonToolbar>
-      </IonFooter>
-    </IonPage>
+        <IonFooter>
+          <IonToolbar>
+            <IonTitle size="small">© 2025 Dancing Goat Studios</IonTitle>
+          </IonToolbar>
+        </IonFooter>
+      </IonPage>
+    </>
   );
 };
 

@@ -68,11 +68,8 @@ export const updateJobEventDatesByNumberID = async (
         // Get current eventHours or initialize an empty array if not present
         let currentEventHours = jobData.eventHours || [];
 
-        console.log(jobData.hours)
-        console.log(jobData.eventHours)
         // Ensure eventHours matches the length of updatedEventDates
         while (currentEventHours.length < updatedEventDates.length) {
-          
           currentEventHours.push(perDayHours);
         }
 
