@@ -3,7 +3,16 @@ import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonBu
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
-import { deleteLastEventByJobID, subscribeToJobs, updateJobEventDatesByNumberID, updateShippingDate } from '../../firebase/controller';
+import { useAuth } from '../../firebase/AuthContext'
+import { 
+  deleteLastEventByJobID, 
+  subscribeToJobs, 
+  updateJobEventDatesByNumberID, 
+  updateShippingDate, 
+  editSiteInfoDocument,
+  updateArrayElement,
+  removeArrayElement
+} from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -21,6 +30,7 @@ interface Job {
   eventHours: number[];
   hours: number;
   shippingDate: string;
+  calendarName:string;
 }
 
 interface CalendarEvent {
@@ -31,18 +41,42 @@ interface CalendarEvent {
 }
 
 const Calendar: React.FC = () => {
+  const { user } = useAuth();
   const history = useHistory();
   const calendarRef = useRef<FullCalendar | null>(null);
 
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
   const [showToast, setShowToast] = useState(false);
-  const [toastText, setToastText] = useState('')
+  const [toastText, setToastText] = useState('');
 
-  const [myTitle, setMyTitle] = useState('')
-  const [myJobNumber, setMyJobNumber] = useState(0)
-  const [myJobDate, setMyJobDate] = useState('')
+  const [myTitle, setMyTitle] = useState('');
+  const [myJobNumber, setMyJobNumber] = useState(0);
+  const [myJobDate, setMyJobDate] = useState('');
+  const [calendarsToFilter, setCalendarsToFilter] = useState(['main']);
 
+  // Navigate to today's date
+  useIonViewDidEnter(() => {
+    setTimeout(() => {
+      const calendarApi = calendarRef.current?.getApi();
+      if (calendarApi) { calendarApi.updateSize(); calendarApi.gotoDate(new Date()); }
+    }, 200);
+  });
+
+  // Handle Logging out
+  const handleLogout = async () => {
+    try { await signOut(auth); history.push('/login');
+    } catch (error) { console.error('Error signing out:', error); }
+  };
+
+  // Moves calendar to today's date
+  const handleTodayButtonClick = () => {
+    const calendarApi = calendarRef.current?.getApi();
+    if (calendarApi) { calendarApi.today(); }
+  };
+
+  //////////////////////////////  REAL TIME UPDATING  //////////////////////////////
   useEffect(() => {
     const unsubscribe = subscribeToJobs((jobs) => {
       setMyJobs(jobs);
@@ -52,35 +86,36 @@ const Calendar: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Navigate to today's date
-  useIonViewDidEnter(() => {
-    setTimeout(() => {
-      const calendarApi = calendarRef.current?.getApi();
-      if (calendarApi) {
-        calendarApi.updateSize();
-        calendarApi.gotoDate(new Date());
+  //////////////////////////////  FILTER OUT CALENDARS  //////////////////////////////
+  useEffect(() => {
+    const filteredJobs = myJobs.filter(
+      job => !calendarsToFilter.includes(job.calendarName)
+    );
+
+    const newFilteredEvents = filteredJobs.flatMap(job => {
+      const jobEvents = job.eventDates.map(date => ({
+        jobID: job.jobID,
+        title: `${job.title}`,
+        date: date,
+        backgroundColor: job.backgroundColor,
+      }));
+
+      if (job.shippingDate) {
+        jobEvents.push({
+          jobID: job.jobID,
+          title: `${job.title}: Shipping Date`,
+          date: job.shippingDate,
+          backgroundColor: job.backgroundColor,
+        });
       }
-    }, 200);
-  });
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      console.log('User signed out successfully');
-      history.push('/login');
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
+      return jobEvents;
+    });
 
-  const handleTodayButtonClick = () => {
-    const calendarApi = calendarRef.current?.getApi();
-    if (calendarApi) {
-      calendarApi.today();
-    }
-  };
+    setFilteredEvents(newFilteredEvents);
+  }, [events, calendarsToFilter]);
 
-  // Start of Event Handling
+  //////////////////////////////  HANDLE EVENTS BEING CLICKED  //////////////////////////////
   const handleEventClick = (info: any) => {
     const { event } = info;
     const [titleBeforeColon] = event.title.split(':');
@@ -150,10 +185,14 @@ const Calendar: React.FC = () => {
         
         if (info.oldEvent.startStr !== firstEventDate) {
           if (eventDateFound && new Date(info.oldEvent.startStr) > new Date(myStartDate)) {
+            setToastText("Move rejected: Event can not be moved before previous job events.");
+            setShowToast(true)
             info.revert();
             return;
           }
           if (new Date(myStartDate) < new Date(firstEventDate)) {
+            setToastText("Move rejected: Event can not be moedd before previous job events.");
+            setShowToast(true)
             info.revert();
             return;
           }
@@ -217,7 +256,7 @@ const Calendar: React.FC = () => {
     }
   };
 
-  // Helper function for updatting the back end
+  //////////////////////////////  HELPER FUNCTION FOR BACKEND WRITING  //////////////////////////////
   const updateEventsFromJobs = (jobs: Job[]) => {
     const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
       let remainingHours = job.hours; // Initialize with total job hours
@@ -263,39 +302,30 @@ const Calendar: React.FC = () => {
     const jobID = event.extendedProps.jobID;
     const job = myJobs.find(j => j.jobID === jobID);
     const isLastEvent = job?.eventDates[job.eventDates.length - 1] === event.startStr;
+
     if (job) {
-      // If not the last event, prevent resizing
-      if (!isLastEvent) {
-        info.revert();
-        return;
-      };
+      if (!isLastEvent) { info.revert(); return; }; // If not the last event, prevent resizing
       
-      const startDate = event.start;
-      const endDate = event.end;
-      
-      if (startDate && endDate) {
-        // Ensure resizing does not go onto or beyond the shipping date
+      // Ensure resizing does not go onto or beyond the shipping date
+      if (event.start && event.end) {
         const shippingDate = new Date(job.shippingDate);
         shippingDate.setDate(shippingDate.getDate() + 1);
-        if (endDate >= shippingDate) {
+        if (event.end >= shippingDate) {
           setToastText("Resize rejected: Resizing would extend onto or beyond the shipping date.");
           setShowToast(true)
-          info.revert();
-          return;
+          info.revert(); return;
         };
     
-        const differenceInTime = endDate.getTime() - startDate.getTime();
+        const differenceInTime = event.end.getTime() - event.start.getTime();
         const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
     
         const newEvents: CalendarEvent[] = [];
         for (let i = 0; i < totalDays; i++) {
-          const newDate = new Date(startDate);
-          newDate.setDate(startDate.getDate() + i);
+          const newDate = new Date(event.start);
+          newDate.setDate(event.start.getDate() + i);
     
           const dayOfWeek = newDate.getDay();
-          if (dayOfWeek === 6 || dayOfWeek === 0) {
-            continue; // Skip weekends
-          };
+          if (dayOfWeek === 6 || dayOfWeek === 0) { continue; }; // Skip weekends 
     
           newEvents.push({
             jobID: event.extendedProps.jobID,
@@ -355,7 +385,7 @@ const Calendar: React.FC = () => {
     );
   };
 
-  //////////////////////////////  DELETE MODAL  //////////////////////////////
+  //////////////////////////////  DELETE MODAL STUFF  //////////////////////////////
   const [showAlert, setShowAlert] = useState(false);
   const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
 
@@ -384,6 +414,21 @@ const Calendar: React.FC = () => {
   // async function openEndMenu() {
   //   await menuController.open('end');
   // }
+
+
+  //////////////////////////////  TESTING BUTTON  //////////////////////////////
+  const handleTest = () => {
+    if (user && user.email) {
+      if (calendarsToFilter[0] === 'main') {
+        setCalendarsToFilter(['secondary'])
+      } else {
+        setCalendarsToFilter(['main'])
+      }
+      // editSiteInfoDocument(user.email, 'feildToChange', 'newValue')
+      // updateArrayElement(user.email, 'arrayName', (IndexNumber to change, 9999 to add), 'newValue')
+      // removeArrayElement(user.email, 'arrayName', 'valueToRemove')
+    }
+  }
 
   return (
     <>
@@ -443,7 +488,9 @@ const Calendar: React.FC = () => {
             Open End Menu
           </IonButton> */}
           <div className='mainPageHolder'>
-            <div className='frank'>Frank</div>
+            <div className='frank'>
+              <IonButton onClick={handleTest}>Testing</IonButton>
+            </div>
             <div className='calendarHolder'>
               <FullCalendar
                 ref={calendarRef}
@@ -452,7 +499,7 @@ const Calendar: React.FC = () => {
                 initialView="dayGridYear"
                 height="87vh"
                 editable={true}
-                events={events}
+                events={filteredEvents}
                 customButtons={{
                   myTodayButton: {
                     text: 'Today',

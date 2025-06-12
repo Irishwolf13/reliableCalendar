@@ -1,5 +1,5 @@
 import { db } from "../firebase/config"; // Ensure the correct path is used
-import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs } from "firebase/firestore";
+import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs, addDoc } from "firebase/firestore";
 
 
 //////////////////////////////  GENERAL FUNCTIONS  //////////////////////////////
@@ -13,6 +13,7 @@ interface Job {
   eventHours: number[];
   hours: number;
   shippingDate: string;
+  calendarName: string;
 }
 
 // Function to subscribe to jobs collection
@@ -32,12 +33,181 @@ export const subscribeToJobs = (callback: (jobs: Job[]) => void): (() => void) =
         eventHours: data.eventHours,
         hours: data.hours,
         shippingDate: data.shippingDate,
+        calendarName: data.calendarName
       });
     });
     callback(jobs);
   });
 };
 
+// Define the SiteInfo interface if not already defined here or imported
+
+interface SiteInfo {
+  email: string;
+  calendarNames: string[];
+  viewSideMenu: boolean;
+  id?: string; // Optional because it's added after creation
+}
+
+export const createSiteInfoDocument = async (email: string): Promise<SiteInfo | false | null> => {
+  try {
+    const siteInfoCollectionRef = collection(db, 'siteInfo');
+
+    // Query to check if a document with this email already exists
+    const emailQuery = query(siteInfoCollectionRef, where('email', '==', email));
+    const querySnapshot = await getDocs(emailQuery);
+
+    // Check if any documents were returned by the query
+    if (!querySnapshot.empty) {
+      console.log("Email already in use.");
+      return false;
+    }
+
+    // Create a new document with the specified structure
+    const siteInfo: SiteInfo = {
+      email,
+      calendarNames: ['main', 'secondary'],
+      viewSideMenu: true,
+    };
+
+    // Add the document to Firestore
+    const docRef = await addDoc(siteInfoCollectionRef, siteInfo);
+
+    // Return the data along with the generated document ID
+    return { ...siteInfo, id: docRef.id };
+  } catch (error) {
+    console.error("Error adding document: ", error);
+    return null;
+  }
+};
+
+export const editSiteInfoDocument = async (email: string, field: string, newValue: any): Promise<boolean> => {
+  try {
+    const siteInfoCollectionRef = collection(db, 'siteInfo');
+    
+    // Query to find the document with the matching email
+    const emailQuery = query(siteInfoCollectionRef, where('email', '==', email));
+    const querySnapshot = await getDocs(emailQuery);
+
+    // Check if the document exists
+    if (querySnapshot.empty) {
+      console.log("No document found with the provided email.");
+      return false;
+    }
+
+    // Get the document ID and update the specified field
+    const docRef = querySnapshot.docs[0].ref;  // Assuming email is unique
+
+    // Create an object with the field to be updated
+    const updateData: { [key: string]: any } = {};
+    updateData[field] = newValue;
+
+    // Perform the update
+    await updateDoc(docRef, updateData);
+
+    console.log(`Document updated successfully: ${field} -> ${newValue}`);
+    return true;
+
+  } catch (error) {
+    console.error("Error updating document: ", error);
+    return false;
+  }
+};
+
+export const updateArrayElement = async (email: string, fieldName: string, index: number, newValue: any): Promise<boolean> => {
+  try {
+    const siteInfoCollectionRef = collection(db, 'siteInfo');
+
+    // Query to find the document with the matching email
+    const emailQuery = query(siteInfoCollectionRef, where('email', '==', email));
+    const querySnapshot = await getDocs(emailQuery);
+
+    if (querySnapshot.empty) {
+      console.log("No document found with the provided email.");
+      return false;
+    }
+
+    // Assuming the email is unique, take the first document
+    const doc = querySnapshot.docs[0];
+    const data = doc.data();
+
+    if (!data || !Array.isArray(data[fieldName])) {
+      console.error(`Field '${fieldName}' is not an array or does not exist.`);
+      return false;
+    }
+
+    // Clone and update the array
+    const updatedArray = [...data[fieldName]];
+
+    if (index < 0) {
+      console.error("Negative index is not allowed.");
+      return false;
+    }
+
+    if (index >= updatedArray.length) {
+      console.log(`Index ${index} out of bounds, appending value to the end of the array.`);
+      updatedArray.push(newValue);
+    } else {
+      updatedArray[index] = newValue;
+    }
+
+    // Create an update object
+    const updateData: { [key: string]: any } = {};
+    updateData[fieldName] = updatedArray;
+
+    // Update the document in Firestore
+    await updateDoc(doc.ref, updateData);
+
+    console.log(`Updated ${fieldName} in document successfully.`);
+    return true;
+
+  } catch (error) {
+    console.error("Error updating document: ", error);
+    return false;
+  }
+};
+
+// Function to remove an item from an array that matches the given value
+export const removeArrayElement = async (email: string, fieldName: string, valueToRemove: any): Promise<boolean> => {
+  try {
+    const siteInfoCollectionRef = collection(db, 'siteInfo');
+
+    // Query to find the document with the matching email
+    const emailQuery = query(siteInfoCollectionRef, where('email', '==', email));
+    const querySnapshot = await getDocs(emailQuery);
+
+    if (querySnapshot.empty) {
+      console.log("No document found with the provided email.");
+      return false;
+    }
+
+    // Assuming the email is unique, take the first document
+    const doc = querySnapshot.docs[0];
+    const data = doc.data();
+
+    if (!data || !Array.isArray(data[fieldName])) {
+      console.error(`Field '${fieldName}' is not an array or does not exist.`);
+      return false;
+    }
+
+    // Filter the array to remove all instances of valueToRemove
+    const updatedArray = data[fieldName].filter((item: any) => item !== valueToRemove);
+
+    // Create an update object
+    const updateData: { [key: string]: any } = {};
+    updateData[fieldName] = updatedArray;
+
+    // Update the document in Firestore
+    await updateDoc(doc.ref, updateData);
+
+    console.log(`Removed all instances of value from ${fieldName} in document successfully.`);
+    return true;
+
+  } catch (error) {
+    console.error("Error updating document: ", error);
+    return false;
+  }
+};
 
 //////////////////////////////  CALENDAR FUNCTIONS  //////////////////////////////
 

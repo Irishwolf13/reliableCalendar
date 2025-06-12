@@ -2,64 +2,56 @@ import React, { useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import { auth } from '../../firebase/config';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import {
-  IonButton,
-  IonButtons,
-  IonContent,
-  IonHeader,
-  IonInput,
-  IonItem,
-  IonPage,
-  IonTitle,
-  IonToolbar,
-  IonSegment,
-  IonSegmentButton,
-  IonLabel,
-} from '@ionic/react';
+import { IonButton, IonButtons, IonContent, IonHeader, IonInput, IonItem, IonPage, IonTitle, IonToolbar, IonSegment, IonSegmentButton, IonLabel, } from '@ionic/react';
+import { createSiteInfoDocument } from '../../firebase/controller';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [playerName, setPlayerName] = useState(''); // New state for player name
-  const [isSignUp, setIsSignUp] = useState(false); // State to toggle between Login and Sign Up
+  const [isSignUp, setIsSignUp] = useState(false);
   const history = useHistory();
 
-  const handleLogin = async (event: React.FormEvent) => {
-    event.preventDefault();
+const handleLogin = async (event: React.FormEvent) => {
+  event.preventDefault();
 
-    if (isSignUp) {
-      try {
-        // Create a new user account
-        await createUserWithEmailAndPassword(auth, email, password);
-        console.log('User registered successfully');
+  if (isSignUp) {
+    try {
+      // Create a new user account
+      await createUserWithEmailAndPassword(auth, email, password);
+      await createSiteInfoDocument(email);
+      console.log('User registered successfully');
 
-        // Clear the form fields before redirecting
-        setEmail('');
-        setPassword('');
-        setPlayerName('');
+      // Clear the form fields before redirecting
+      setEmail('');
+      setPassword('');
 
-        // Redirect to /home after sign-up
-        history.push('/home');
-      } catch (err) {
+      // Redirect to /home after sign-up
+      history.push('/home');
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        alert('The email address is already in use by another account.');
+      } else {
         alert('Sign-up failed. Please check your inputs.');
       }
-    } else {
-      try {
-        // Sign-in existing user
-        await signInWithEmailAndPassword(auth, email, password);
-        console.log('User signed in successfully');
-
-        // Clear the form fields before redirecting
-        setEmail('');
-        setPassword('');
-
-        // Redirect to /home on successful login
-        history.push('/home');
-      } catch (err) {
-        alert('Login failed. Please check your credentials.');
-      }
     }
-  };
+  } else {
+    try {
+      // Sign-in existing user
+      await signInWithEmailAndPassword(auth, email, password);
+      console.log('User signed in successfully');
+
+      // Clear the form fields before redirecting
+      setEmail('');
+      setPassword('');
+
+      // Redirect to /home on successful login
+      history.push('/home');
+    } catch (err) {
+      alert('Login failed. Please check your credentials.');
+    }
+  }
+};
+
 
   const goToSplash = () => {
     history.push('/');
@@ -88,19 +80,6 @@ const Login: React.FC = () => {
 
           <h2>{isSignUp ? 'Create an Account' : 'Welcome Back!'}</h2>
           <form onSubmit={handleLogin}>
-            {isSignUp && (
-              <IonItem>
-                <IonInput
-                  type="text"
-                  value={playerName}
-                  onIonInput={(e) => setPlayerName(e.detail.value!)}
-                  required={isSignUp}
-                  label="Player Name"
-                  labelPlacement="floating"
-                  placeholder="Enter Player Name"
-                />
-              </IonItem>
-            )}
             <IonItem>
               <IonInput
                 type="email"
