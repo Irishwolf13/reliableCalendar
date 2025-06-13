@@ -1,5 +1,5 @@
 import { db } from "../firebase/config"; // Ensure the correct path is used
-import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs, addDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs, addDoc, getDoc } from "firebase/firestore";
 
 
 //////////////////////////////  GENERAL FUNCTIONS  //////////////////////////////
@@ -40,8 +40,86 @@ export const subscribeToJobs = (callback: (jobs: Job[]) => void): (() => void) =
   });
 };
 
-// Define the SiteInfo interface if not already defined here or imported
+// Function to retrieve calendar names from siteInfo collection
+export const getCalendarNames = async (): Promise<string[]> => {
+  const docRef = doc(collection(db, 'siteInfo'), 'calendarNames');
+  try {
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return data.names || [];
+    } else {
+      console.error("No such document!");
+      return [];
+    }
+  } catch (error) {
+    console.error("Error getting document:", error);
+    return [];
+  }
+};
 
+// Function to add a calendar name to the siteInfo collection
+export const addCalendarName = async (newCalendarName: string): Promise<void> => {
+  const docRef = doc(collection(db, 'siteInfo'), 'calendarNames');
+
+  try {
+    // Get the existing document
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const currentNames = data.names || [];
+
+      // Add the new calendar name if it's not already present
+      if (!currentNames.includes(newCalendarName)) {
+        await updateDoc(docRef, {
+          names: [...currentNames, newCalendarName],
+        });
+        console.log(`Added new calendar name: ${newCalendarName}`);
+      } else {
+        console.log(`Calendar name '${newCalendarName}' already exists.`);
+      }
+    } else {
+      console.error("No such document!");
+    }
+  } catch (error) {
+    console.error("Error updating document:", error);
+  }
+};
+
+// Function to remove a calendar name from the siteInfo collection
+export const removeCalendarName = async (calendarNameToRemove: string): Promise<void> => {
+  const docRef = doc(collection(db, 'siteInfo'), 'calendarNames');
+
+  try {
+    // Get the existing document
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const currentNames = data.names || [];
+
+      // Filter out the calendar name to remove
+      const updatedNames = currentNames.filter((name: string) => name !== calendarNameToRemove);
+
+      // Check if there was any change before updating
+      if (updatedNames.length !== currentNames.length) {
+        await updateDoc(docRef, {
+          names: updatedNames,
+        });
+        console.log(`Removed calendar name: ${calendarNameToRemove}`);
+      } else {
+        console.log(`Calendar name '${calendarNameToRemove}' not found.`);
+      }
+    } else {
+      console.error("No such document!");
+    }
+  } catch (error) {
+    console.error("Error updating document:", error);
+  }
+};
+
+// Define the SiteInfo interface if not already defined here or imported
 interface SiteInfo {
   email: string;
   calendarNames: string[];

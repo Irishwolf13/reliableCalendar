@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast } from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast, IonIcon, IonItem, IonLabel, IonToggle, IonInput } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
-import { useAuth } from '../../firebase/AuthContext'
+import { useAuth } from '../../firebase/AuthContext';
 import { 
   deleteLastEventByJobID, 
   subscribeToJobs, 
@@ -11,7 +11,10 @@ import {
   updateShippingDate, 
   editSiteInfoDocument,
   updateArrayElement,
-  removeArrayElement
+  removeArrayElement,
+  getCalendarNames,
+  addCalendarName,
+  removeCalendarName,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -19,9 +22,9 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 
 import { menuController } from '@ionic/core/components';
-import './Calendar.css'
+import { refreshOutline } from 'ionicons/icons';
+import './Calendar.css';
 
-// Job and CalendarEvent interfaces remain unchanged
 interface Job {
   jobID: number;
   title: string;
@@ -54,9 +57,15 @@ const Calendar: React.FC = () => {
   const [myTitle, setMyTitle] = useState('');
   const [myJobNumber, setMyJobNumber] = useState(0);
   const [myJobDate, setMyJobDate] = useState('');
-  const [calendarsToFilter, setCalendarsToFilter] = useState(['main']);
+  const [refresh, setRefresh] = useState(false);
+  const [newCalendarName, setNewCalendarName] = useState<string>('');
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [calendarNameToDelete, setCalendarNameToDelete] = useState<string | null>(null);
 
-  // Navigate to today's date
+  // New state for managing calendar names and toggles
+  const [calendarNames, setCalendarNames] = useState<string[]>([]);
+  const [activeCalendars, setActiveCalendars] = useState<{[key: string]: boolean}>({});
+
   useIonViewDidEnter(() => {
     setTimeout(() => {
       const calendarApi = calendarRef.current?.getApi();
@@ -64,13 +73,11 @@ const Calendar: React.FC = () => {
     }, 200);
   });
 
-  // Handle Logging out
   const handleLogout = async () => {
     try { await signOut(auth); history.push('/login');
     } catch (error) { console.error('Error signing out:', error); }
   };
 
-  // Moves calendar to today's date
   const handleTodayButtonClick = () => {
     const calendarApi = calendarRef.current?.getApi();
     if (calendarApi) { calendarApi.today(); }
@@ -80,40 +87,141 @@ const Calendar: React.FC = () => {
   useEffect(() => {
     const unsubscribe = subscribeToJobs((jobs) => {
       setMyJobs(jobs);
-      updateEventsFromJobs(jobs);
+      // updateEventsFromJobs(jobs);
     });
 
     return () => unsubscribe();
   }, []);
 
-  //////////////////////////////  FILTER OUT CALENDARS  //////////////////////////////
+  //////////////////////////////  CALENDAR NAMES  //////////////////////////////
   useEffect(() => {
-    const filteredJobs = myJobs.filter(
-      job => !calendarsToFilter.includes(job.calendarName)
-    );
+    getCalendarNames().then((names) => {
+      setCalendarNames(names);
+      
+      // Initialize all calendars as active
+      const initialActiveState = names.reduce((acc, name) => ({ ...acc, [name]: true }), {});
+      setActiveCalendars(initialActiveState);
+    }).catch((error) => {
+      console.error("Error fetching calendar names:", error);
+    });
+  }, [refresh]);
 
-    const newFilteredEvents = filteredJobs.flatMap(job => {
-      const jobEvents = job.eventDates.map(date => ({
-        jobID: job.jobID,
-        title: `${job.title}`,
-        date: date,
-        backgroundColor: job.backgroundColor,
-      }));
+  const refreshButtonClicked = () => {
+    setRefresh(prevRefresh => !prevRefresh);
+  }
 
-      if (job.shippingDate) {
-        jobEvents.push({
+    const handleAddCalendar = async () => {
+    if (newCalendarName.trim() !== '') {
+      await addCalendarName(newCalendarName.trim());
+
+      // Optionally update local state or refetch the calendar names
+      setCalendarNames((prevNames) => [...prevNames, newCalendarName.trim()]);
+      setNewCalendarName(''); // Clear the input field after adding
+    }
+  };
+
+  const handleDeleteCalendar = (name: string) => {
+    setCalendarNameToDelete(name);
+    setShowDeleteAlert(true);
+  };
+
+  const confirmDeleteCalendar = async () => {
+    if (calendarNameToDelete) {
+      try {
+        await removeCalendarName(calendarNameToDelete);
+        setCalendarNames((current) =>
+          current.filter((calendarName) => calendarName !== calendarNameToDelete)
+        );
+        console.log(`Deleted calendar name: ${calendarNameToDelete}`);
+      } catch (error) {
+        console.error("Error deleting calendar name:", error);
+      }
+      setCalendarNameToDelete(null);
+    }
+    setShowDeleteAlert(false);
+  };
+
+  const cancelDeleteCalendar = () => {
+    setCalendarNameToDelete(null);
+    setShowDeleteAlert(false);
+  };
+
+  //////////////////////////////  FILTER OUT CALENDARS  //////////////////////////////
+  interface Event { 
+    jobID: number; 
+    title: string; 
+    date: string; 
+    backgroundColor: string;
+  }
+
+  useEffect(() => {
+    const isShippingActive = activeCalendars['shipping'];
+
+    // Explicitly typing regularEvents as Event[]
+    const regularEvents: Event[] = myJobs.reduce((acc: Event[], job) => {
+      let remainingHours = job.hours;
+
+      // Create expanded events for regular events
+      const expandedEvents = job.eventDates.map((date, index) => {
+        const eventHour = job.eventHours[index];
+        const applicableHours = Math.min(eventHour, remainingHours);
+        const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
+
+        if (remainingHours >= applicableHours) {
+          remainingHours -= applicableHours;
+        }
+
+        return {
           jobID: job.jobID,
-          title: `${job.title}: Shipping Date`,
-          date: job.shippingDate,
+          title: eventTitle,
+          date,
           backgroundColor: job.backgroundColor,
-        });
+        };
+      });
+
+      // Add regular events if they're active in their associated calendars
+      if (activeCalendars[job.calendarName]) {
+        acc = acc.concat(expandedEvents);
       }
 
-      return jobEvents;
-    });
+      // Conditionally add shipping events based on shipping calendar's status
+      if (job.shippingDate) {
+        if (isShippingActive || activeCalendars[job.calendarName]) {
+          acc.push({
+            jobID: job.jobID,
+            title: `${job.title}: Shipping`,
+            date: job.shippingDate,
+            backgroundColor: job.backgroundColor,
+          });
+        }
+      }
 
-    setFilteredEvents(newFilteredEvents);
-  }, [events, calendarsToFilter]);
+      return acc;
+    }, []);
+
+    // Set the filtered events
+    setFilteredEvents(regularEvents);
+
+  }, [myJobs, activeCalendars]);
+
+
+  //////////////////////////////  HANDLE DATE CLICKED  //////////////////////////////
+  const handleDateClick = (arg:any) => {
+    console.log(arg)
+    // Open up new job modal, pass into it arg.dateStr for the date
+  }
+
+  const createNewJob = () => {
+    // This is where we will create a new job and post it to the backend, which should trigger a front end refresh of jobs
+  }
+
+  //////////////////////////////  TOGGLE HANDLER  //////////////////////////////
+  const handleToggleCalendar = (calendarName: string) => {
+    setActiveCalendars(prevState => ({
+      ...prevState,
+      [calendarName]: !prevState[calendarName],
+    }));
+  };
 
   //////////////////////////////  HANDLE EVENTS BEING CLICKED  //////////////////////////////
   const handleEventClick = (info: any) => {
@@ -248,8 +356,6 @@ const Calendar: React.FC = () => {
             }
             return job;
           });
-
-          updateEventsFromJobs(newJobs);
           return newJobs;
         });
       }
@@ -257,44 +363,45 @@ const Calendar: React.FC = () => {
   };
 
   //////////////////////////////  HELPER FUNCTION FOR BACKEND WRITING  //////////////////////////////
-  const updateEventsFromJobs = (jobs: Job[]) => {
-    const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
-      let remainingHours = job.hours; // Initialize with total job hours
+  //////////////////////////////  Not sure I need this anymore, as it's been refactored elsewhere  //////////////////////////////
+  // const updateEventsFromJobs = (jobs: Job[]) => {
+  //   const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
+  //     let remainingHours = job.hours; // Initialize with total job hours
 
-      // Map regular job dates into events
-      const expandedEvents = job.eventDates.map((date, index) => {
-        const eventHour = job.eventHours[index];
+  //     // Map regular job dates into events
+  //     const expandedEvents = job.eventDates.map((date, index) => {
+  //       const eventHour = job.eventHours[index];
 
-        // Use the minimum of eventHour or remainingHours for display title and calculation
-        const applicableHours = Math.min(eventHour, remainingHours);
-        const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
+  //       // Use the minimum of eventHour or remainingHours for display title and calculation
+  //       const applicableHours = Math.min(eventHour, remainingHours);
+  //       const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
 
-        // Adjust remainingHours only if it is more than or equal to applicableHours
-        if (remainingHours >= applicableHours) { remainingHours -= applicableHours; }
+  //       // Adjust remainingHours only if it is more than or equal to applicableHours
+  //       if (remainingHours >= applicableHours) { remainingHours -= applicableHours; }
 
-        return {
-          jobID: job.jobID,
-          title: eventTitle,
-          date,
-          backgroundColor: job.backgroundColor,
-        };
-      });
+  //       return {
+  //         jobID: job.jobID,
+  //         title: eventTitle,
+  //         date,
+  //         backgroundColor: job.backgroundColor,
+  //       };
+  //     });
 
-      // Add a special event for shipping date
-      if (job.shippingDate) {
-        expandedEvents.push({
-          jobID: job.jobID,
-          title: `${job.title}: Shipping Date`,
-          date: job.shippingDate,
-          backgroundColor: job.backgroundColor, // A distinct color for shipping events
-        });
-      }
+  //     // Add a special event for shipping date
+  //     if (job.shippingDate) {
+  //       expandedEvents.push({
+  //         jobID: job.jobID,
+  //         title: `${job.title}: Shipping Date`,
+  //         date: job.shippingDate,
+  //         backgroundColor: job.backgroundColor, // A distinct color for shipping events
+  //       });
+  //     }
 
-      return acc.concat(expandedEvents);
-    }, []);
+  //     return acc.concat(expandedEvents);
+  //   }, []);
 
-    setEvents(updatedEvents);
-  };
+  //   setEvents(updatedEvents);
+  // };
 
   //////////////////////////////  RESIZE EVENTS  //////////////////////////////
   const handleEventResize = (info: any) => {
@@ -364,7 +471,7 @@ const Calendar: React.FC = () => {
   };
 
   //////////////////////////////  DELETE EVENT  //////////////////////////////
-  const renderDeleteButton = (eventInfo: any) => {
+  const renderDeleteEventButton = (eventInfo: any) => {
     const myJobID = eventInfo.event.extendedProps.jobID;
     const myEventDate = eventInfo.event.startStr;
     const job = myJobs.find(j => j.jobID === myJobID);
@@ -385,7 +492,6 @@ const Calendar: React.FC = () => {
     );
   };
 
-  //////////////////////////////  DELETE MODAL STUFF  //////////////////////////////
   const [showAlert, setShowAlert] = useState(false);
   const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
 
@@ -419,11 +525,6 @@ const Calendar: React.FC = () => {
   //////////////////////////////  TESTING BUTTON  //////////////////////////////
   const handleTest = () => {
     if (user && user.email) {
-      if (calendarsToFilter[0] === 'main') {
-        setCalendarsToFilter(['secondary'])
-      } else {
-        setCalendarsToFilter(['main'])
-      }
       // editSiteInfoDocument(user.email, 'feildToChange', 'newValue')
       // updateArrayElement(user.email, 'arrayName', (IndexNumber to change, 9999 to add), 'newValue')
       // removeArrayElement(user.email, 'arrayName', 'valueToRemove')
@@ -489,7 +590,36 @@ const Calendar: React.FC = () => {
           </IonButton> */}
           <div className='mainPageHolder'>
             <div className='frank'>
-              <IonButton onClick={handleTest}>Testing</IonButton>
+              {/* Render Toggle buttons */}
+              {calendarNames.map((name) => (
+                <IonItem key={name}>
+                  <IonLabel>{name}</IonLabel>
+                  <IonToggle
+                    checked={activeCalendars[name]}
+                    onIonChange={() => handleToggleCalendar(name)}
+                  />
+              {name !== "main" && name !== 'shipping' && ( // Conditionally render the delete button
+                <IonButton 
+                  color="danger"
+                  slot="end"
+                  onClick={() => handleDeleteCalendar(name)}
+                >
+                  X
+                </IonButton>
+              )}
+                </IonItem>
+              ))}
+              <IonItem>
+                <IonInput
+                  value={newCalendarName}
+                  placeholder="Enter new calendar name"
+                  onIonChange={(e) => setNewCalendarName(e.detail.value!)}
+                />
+                <IonButton color="success" onClick={handleAddCalendar}>+</IonButton>
+              </IonItem>
+              <IonButton onClick={refreshButtonClicked}>
+                <IonIcon icon={refreshOutline} slot="icon-only" />
+              </IonButton>
             </div>
             <div className='calendarHolder'>
               <FullCalendar
@@ -514,7 +644,8 @@ const Calendar: React.FC = () => {
                 eventDrop={handleEventDrop}
                 eventClick={handleEventClick}
                 eventResize={handleEventResize}
-                eventContent={renderDeleteButton}
+                eventContent={renderDeleteEventButton}
+                dateClick={handleDateClick}
                 />
             </div>
             
@@ -538,6 +669,24 @@ const Calendar: React.FC = () => {
               handler: confirmDelete,
             },
           ]}
+          />
+
+          <IonAlert
+            isOpen={showDeleteAlert}
+            onDidDismiss={() => setShowDeleteAlert(false)}
+            header={"Confirm Delete"}
+            message={`Are you sure you want to delete the calendar "${calendarNameToDelete}"?`}
+            buttons={[
+              {
+                text: "Cancel",
+                role: "cancel",
+                handler: cancelDeleteCalendar,
+              },
+              {
+                text: "Delete",
+                handler: confirmDeleteCalendar,
+              },
+            ]}
           />
         </IonContent>
 
