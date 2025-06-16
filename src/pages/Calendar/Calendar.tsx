@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast, IonIcon, IonItem, IonLabel, IonToggle, IonInput } from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast, IonIcon, IonItem, IonLabel, IonToggle, IonInput, IonDatetime, IonSelectOption, IonSelect, IonDatetimeButton, IonModal } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
@@ -61,6 +61,22 @@ const Calendar: React.FC = () => {
   const [newCalendarName, setNewCalendarName] = useState<string>('');
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [calendarNameToDelete, setCalendarNameToDelete] = useState<string | null>(null);
+
+  // New Job useStates, should be made into an object at some point
+  const [newJobSelectedDate, setNewJobSelectedDate] = useState<string | null>('');
+  const [newJobTitle, setNewJobTitle] = useState<string>('');
+  const [newJobTotalHours, setNewJobTotalHours] = useState<number>(0);
+  const [newJobPerDayHours, setNewJobPerDayHours] = useState<number>(0);
+  const [newJobColor, setNewJobColor] = useState<string>(''); // Adjusted for single select
+  const [newJobShippingDate, setNewJobShippingDate] = useState<string | null>(null);
+  const [newJobInHandDate, setNewJobInHandDate] = useState<string | null>(null);
+  const [newJobCalendar, setNewJobCalendar] = useState<string>(''); // Adjusted for single select
+  const [newJobScheduled, setNewJobScheduled] = useState<boolean>(true);
+  const [newJobEndDate, setNewJobEndDate] = useState<boolean>(false);
+  const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
+  const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
+
+  const calendarColors = ['Blue','Green','Purple','Pink','Orange','Yellow','Red','Light Blue','Light Green','Light Purple','Light Pink','Light Orange','Light Yellow','Light Red']
 
   // New state for managing calendar names and toggles
   const [calendarNames, setCalendarNames] = useState<string[]>([]);
@@ -204,24 +220,29 @@ const Calendar: React.FC = () => {
 
   }, [myJobs, activeCalendars]);
 
+  //////////////////////////////  HANDLE DATE CLICKED  //////////////////////////////
+  const formatDateToView = (dateStr: string): string => {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+          throw new Error('Invalid date string');
+      }
+      date.setDate(date.getDate() + 1);
+      const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' };
+      return date.toLocaleDateString('en-US', options);
+  };
+
 
   //////////////////////////////  HANDLE DATE CLICKED  //////////////////////////////
   const handleDateClick = (arg:any) => {
-    console.log(arg)
-    // Open up new job modal, pass into it arg.dateStr for the date
+    const formattedDate = formatDateToView(arg.dateStr);
+    setNewJobSelectedDate(formattedDate)
+
+    openSecondMenu()
   }
 
   const createNewJob = () => {
     // This is where we will create a new job and post it to the backend, which should trigger a front end refresh of jobs
   }
-
-  //////////////////////////////  TOGGLE HANDLER  //////////////////////////////
-  const handleToggleCalendar = (calendarName: string) => {
-    setActiveCalendars(prevState => ({
-      ...prevState,
-      [calendarName]: !prevState[calendarName],
-    }));
-  };
 
   //////////////////////////////  HANDLE EVENTS BEING CLICKED  //////////////////////////////
   const handleEventClick = (info: any) => {
@@ -230,15 +251,18 @@ const Calendar: React.FC = () => {
     setMyTitle(titleBeforeColon);
     setMyJobNumber(event.extendedProps.jobID);
 
-    const date = new Date(event.startStr); // Parse the date string into a Date object
-    date.setDate(date.getDate() + 1); // Add one day to the date
-
-    // Format the date as 'Month day, year'
-    const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric'};
-    const formattedDate = date.toLocaleDateString('en-US', options);
-
+    const formattedDate = formatDateToView(event.startStr);
     setMyJobDate(formattedDate);
+
     openFirstMenu();
+  };
+
+  //////////////////////////////  TOGGLE HANDLER  //////////////////////////////
+  const handleToggleCalendar = (calendarName: string) => {
+    setActiveCalendars(prevState => ({
+      ...prevState,
+      [calendarName]: !prevState[calendarName],
+    }));
   };
 
   //////////////////////////////  DROP EVENTS  //////////////////////////////
@@ -509,31 +533,35 @@ const Calendar: React.FC = () => {
   };
 
   //////////////////////////////  SIDE MENUS  //////////////////////////////
-  async function openFirstMenu() {
-    await menuController.open('first-menu');
-  }
-
-  // async function openSecondMenu() {
-  //   await menuController.open('second-menu');
-  // }
-
-  // async function openEndMenu() {
-  //   await menuController.open('end');
-  // }
+  async function openFirstMenu() { await menuController.open('selectedJobMenu'); }
+  async function openSecondMenu() { await menuController.open('newJobMenu'); }
+  // async function openEndMenu() { await menuController.open('end'); }
 
 
   //////////////////////////////  TESTING BUTTON  //////////////////////////////
-  const handleTest = () => {
-    if (user && user.email) {
-      // editSiteInfoDocument(user.email, 'feildToChange', 'newValue')
-      // updateArrayElement(user.email, 'arrayName', (IndexNumber to change, 9999 to add), 'newValue')
-      // removeArrayElement(user.email, 'arrayName', 'valueToRemove')
-    }
-  }
+  // const handleTest = () => {
+  //   if (user && user.email) {
+  //     // editSiteInfoDocument(user.email, 'feildToChange', 'newValue')
+  //     // updateArrayElement(user.email, 'arrayName', (IndexNumber to change, 9999 to add), 'newValue')
+  //     // removeArrayElement(user.email, 'arrayName', 'valueToRemove')
+  //   }
+  // }
+  const [isShippingDateOpen, setIsShippingDateOpen] = useState<boolean>(false);
+  const [isInHandDateOpen, setIsInHandDateOpen] = useState<boolean>(false);
+  
+  const handleShippingDateChange = (e: CustomEvent) => {
+    setNewJobShippingDate(e.detail.value!);
+    setIsShippingDateOpen(false);
+  };
+
+  const handleInHandDateChange = (e: CustomEvent) => {
+    setNewJobInHandDate(e.detail.value!);
+    setIsInHandDateOpen(false);
+  };
 
   return (
     <>
-      <IonMenu menuId="first-menu" contentId="main-content">
+      <IonMenu menuId="selectedJobMenu" contentId="main-content">
         <IonHeader>
           <IonToolbar>
             <IonTitle>{myJobDate}</IonTitle>
@@ -547,16 +575,157 @@ const Calendar: React.FC = () => {
         </IonContent>
       </IonMenu>
 
-      {/* <IonMenu menuId="second-menu" contentId="main-content">
+      <IonMenu menuId="newJobMenu" contentId="main-content">
         <IonHeader>
           <IonToolbar>
-            <IonTitle>Second Menu</IonTitle>
+            <IonTitle>{newJobSelectedDate}</IonTitle>
           </IonToolbar>
         </IonHeader>
-        <IonContent className="ion-padding">This is the second menu content.</IonContent>
+        <IonContent className="ion-padding">
+          <IonLabel>Job Options</IonLabel>
+          <IonItem>
+            <IonLabel slot="start">Title</IonLabel>
+            <IonInput
+              value={newJobTitle}
+              placeholder="Title"
+              onIonChange={e => setNewJobTitle(e.detail.value!)}
+            />
+          </IonItem>
+
+          <IonItem>
+            <IonLabel slot="start">Total Hours</IonLabel>
+            <IonInput
+              type="number"
+              value={newJobTotalHours}
+              onIonChange={e => setNewJobTotalHours(parseFloat(e.detail.value!))}
+            />
+          </IonItem>
+
+          <IonItem>
+            <IonLabel slot="start">PerDay</IonLabel>
+            <IonInput
+              type="number"
+              value={newJobPerDayHours}
+              onIonChange={e => setNewJobPerDayHours(parseFloat(e.detail.value!))}
+            />
+          </IonItem>
+
+          <IonItem>
+            <IonLabel>Job Scheduled</IonLabel>
+            <IonToggle
+          slot="end"
+              checked={newJobScheduled}
+              onIonChange={e => setNewJobScheduled(e.detail.checked)}
+            />
+          </IonItem>
+
+          <IonItem>
+            <IonLabel>Shipping Date</IonLabel>
+            <IonToggle
+              slot="end"
+              checked={showShippingCalendar}
+              onIonChange={e => setShowShippingCalendar(e.detail.checked)}
+            />
+          </IonItem>
+
+          {showShippingCalendar && (
+            <IonItem>
+              <IonDatetimeButton slot="end" datetime="shipping-datetime" onClick={() => setIsShippingDateOpen(true)}></IonDatetimeButton>
+
+              <IonModal
+                isOpen={isShippingDateOpen}
+                onDidDismiss={() => setIsShippingDateOpen(false)}
+                keepContentsMounted={true}
+              >
+                <IonDatetime
+                  id="shipping-datetime"
+                  presentation="date"
+                  value={newJobShippingDate}
+                  onIonChange={handleShippingDateChange}
+                />
+              </IonModal>
+            </IonItem>
+          )}
+
+          <IonItem>
+            <IonLabel>InHand Date</IonLabel>
+            <IonToggle
+              slot="end"
+              checked={showInHandCalendar}
+              onIonChange={e => setShowInHandCalendar(e.detail.checked)}
+            />
+          </IonItem>
+
+          {showInHandCalendar && (
+            <IonItem>
+              <IonLabel></IonLabel>
+              <IonDatetimeButton datetime="inhand-datetime" onClick={() => setIsInHandDateOpen(true)}></IonDatetimeButton>
+
+              <IonModal
+                isOpen={isInHandDateOpen}
+                onDidDismiss={() => setIsInHandDateOpen(false)}
+                keepContentsMounted={true}
+              >
+                <IonDatetime
+                  id="inhand-datetime"
+                  presentation="date"
+                  value={newJobInHandDate}
+                  onIonChange={handleInHandDateChange}
+                />
+              </IonModal>
+            </IonItem> 
+          )}
+          <div className='menuPadding'></div>
+
+          <IonLabel>Calendar Options</IonLabel>
+          <IonItem>
+            <IonLabel>Calendar Name</IonLabel>
+            <IonSelect
+              slot="end"
+              value={newJobCalendar}
+              placeholder="Select"
+              onIonChange={e => setNewJobCalendar(e.detail.value)}
+              interface="popover" // Use popover for immediate selection
+            >
+              {calendarNames.map(name => (
+                <IonSelectOption key={name} value={name}>
+                  {name}
+                </IonSelectOption>
+              ))}
+            </IonSelect>
+          </IonItem>
+
+          <IonItem>
+            <IonLabel>Calendar Color</IonLabel>
+            <IonSelect
+              slot="end"
+              value={newJobColor}
+              placeholder="Select"
+              onIonChange={e => setNewJobColor(e.detail.value)}
+              interface="popover" // Use popover for immediate selection
+            >
+              {calendarColors.map(color => (
+                <IonSelectOption key={color} value={color}>
+                  {color}
+                </IonSelectOption>
+              ))}
+            </IonSelect>
+          </IonItem>
+
+          <IonItem>
+            <IonLabel>Calculate From End Date</IonLabel>
+            <IonToggle
+              slot="end"
+              checked={newJobEndDate}
+              onIonChange={e => setNewJobEndDate(e.detail.checked)}
+            />
+          </IonItem>
+          
+        </IonContent>
       </IonMenu>
 
-      <IonMenu side="end" contentId="main-content">
+
+      {/* <IonMenu side="end" contentId="main-content">
         <IonHeader>
           <IonToolbar>
             <IonTitle>End Menu</IonTitle>
