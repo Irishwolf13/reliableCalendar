@@ -13,6 +13,7 @@ interface Job {
   eventHours: number[];
   hours: number;
   shippingDate: string;
+  inHandDate: string;
   calendarName: string;
 }
 
@@ -33,6 +34,7 @@ export const subscribeToJobs = (callback: (jobs: Job[]) => void): (() => void) =
         eventHours: data.eventHours,
         hours: data.hours,
         shippingDate: data.shippingDate,
+        inHandDate: data.inHandDate,
         calendarName: data.calendarName
       });
     });
@@ -391,9 +393,10 @@ export const deleteLastEventByJobID = async (jobId: number): Promise<void> => {
   }
 };
 
-export const updateShippingDate = async (
+export const updateShippingOrInHandDate = async (
   jobId: number,
-  newShippingDate: string
+  newDate: string,
+  dateType: 'shippingDate' | 'inHandDate'
 ): Promise<void> => {
   try {
     if (!jobId) {
@@ -413,16 +416,16 @@ export const updateShippingDate = async (
       if (docSnapshot.exists()) {
         const docRef = docSnapshot.ref;
 
-        // Update the shippingDate field in Firestore
+        // Update the specified date field in Firestore
         await updateDoc(docRef, {
-          shippingDate: newShippingDate,
+          [dateType]: newDate,
         });
 
-        console.log(`Successfully updated the shipping date to ${newShippingDate} for job ${jobId}.`);
+        console.log(`Successfully updated the ${dateType} to ${newDate} for job ${jobId}.`);
       }
     });
   } catch (error) {
-    console.error('Error updating shippingDate in Firestore:', error);
+    console.error(`Error updating ${dateType} in Firestore:`, error);
   }
 };
 

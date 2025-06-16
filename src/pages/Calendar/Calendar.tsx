@@ -8,7 +8,7 @@ import {
   deleteLastEventByJobID, 
   subscribeToJobs, 
   updateJobEventDatesByNumberID, 
-  updateShippingDate, 
+  updateShippingOrInHandDate, 
   editSiteInfoDocument,
   updateArrayElement,
   removeArrayElement,
@@ -33,6 +33,7 @@ interface Job {
   eventHours: number[];
   hours: number;
   shippingDate: string;
+  inHandDate: string;
   calendarName:string;
 }
 
@@ -172,12 +173,11 @@ const Calendar: React.FC = () => {
 
   useEffect(() => {
     const isShippingActive = activeCalendars['shipping'];
-
-    // Explicitly typing regularEvents as Event[]
+    const isInHandActive = activeCalendars['shipping'];
+    
     const regularEvents: Event[] = myJobs.reduce((acc: Event[], job) => {
       let remainingHours = job.hours;
 
-      // Create expanded events for regular events
       const expandedEvents = job.eventDates.map((date, index) => {
         const eventHour = job.eventHours[index];
         const applicableHours = Math.min(eventHour, remainingHours);
@@ -195,12 +195,9 @@ const Calendar: React.FC = () => {
         };
       });
 
-      // Add regular events if they're active in their associated calendars
-      if (activeCalendars[job.calendarName]) {
-        acc = acc.concat(expandedEvents);
-      }
-
-      // Conditionally add shipping events based on shipping calendar's status
+      if (activeCalendars[job.calendarName]) { acc = acc.concat(expandedEvents); }
+      
+      // Handle shippingDate
       if (job.shippingDate) {
         if (isShippingActive || activeCalendars[job.calendarName]) {
           acc.push({
@@ -211,8 +208,20 @@ const Calendar: React.FC = () => {
           });
         }
       }
+      // Handle inHandDate
+      if (job.inHandDate) {
+        if (isInHandActive || activeCalendars[job.calendarName]) {
+          acc.push({
+            jobID: job.jobID,
+            title: `${job.title}: In-Hand`,
+            date: job.inHandDate,
+            backgroundColor: job.backgroundColor,
+          });
+        }
+      }
 
       return acc;
+
     }, []);
 
     // Set the filtered events
@@ -272,41 +281,43 @@ const Calendar: React.FC = () => {
     const myStartDate = info.event.startStr;
 
     const jobToUpdate = myJobs.find((job) => job.jobID === jobId);
-    
+
     if (!jobToUpdate) return;
 
-    // Check if this is a shipping date event
-    const isShippingDateEvent = jobToUpdate.shippingDate === info.oldEvent.startStr;
+    // Check the event title to determine its type
+    const isShippingDateEvent = event.title.includes('Shipping');
+    const isInHandDateEvent = event.title.includes('In-Hand');
 
-    if (isShippingDateEvent) {
+    if (isShippingDateEvent || isInHandDateEvent) {
       try {
-        // Prevent moving the shipping date on or before any event date
-        const invalidShippingDate = jobToUpdate.eventDates.some(
+        const invalidDate = jobToUpdate.eventDates.some(
           (eventDate) => new Date(myStartDate) <= new Date(eventDate)
         );
 
-        if (invalidShippingDate) {
-          setToastText("Move rejected: Shipping date cannot be on or before any event date.");
-          setShowToast(true)
+        if (invalidDate) {
+          setToastText(`Move rejected: Date cannot be on or before any event date.`);
+          setShowToast(true);
           info.revert();
-          return; // Exit early if the move is invalid
+          return;
         }
 
-        // Update the backend with the new shipping date
-        await updateShippingDate(jobId, myStartDate);
+        // Use the title to identify the date type instead of relying solely on the old event date
+        const dateType = isShippingDateEvent ? 'shippingDate' : 'inHandDate';
 
-        // Update only the shipping date for the job in the frontend
+        await updateShippingOrInHandDate(jobId, myStartDate, dateType);
+
         setMyJobs((prevJobs) =>
           prevJobs.map((job) =>
             job.jobID === jobId
-              ? { ...job, shippingDate: myStartDate }
+              ? {
+                  ...job,
+                  [dateType]: myStartDate,
+                }
               : job
           )
         );
-
-        // console.log(`Updated shipping date for job ${jobId} to ${myStartDate}`);
       } catch (error) {
-        console.error('Failed to update shipping date:', error);
+        console.error('Failed to update date:', error);
         info.revert();
       }
     } else {
@@ -386,47 +397,6 @@ const Calendar: React.FC = () => {
     }
   };
 
-  //////////////////////////////  HELPER FUNCTION FOR BACKEND WRITING  //////////////////////////////
-  //////////////////////////////  Not sure I need this anymore, as it's been refactored elsewhere  //////////////////////////////
-  // const updateEventsFromJobs = (jobs: Job[]) => {
-  //   const updatedEvents = jobs.reduce<CalendarEvent[]>((acc, job) => {
-  //     let remainingHours = job.hours; // Initialize with total job hours
-
-  //     // Map regular job dates into events
-  //     const expandedEvents = job.eventDates.map((date, index) => {
-  //       const eventHour = job.eventHours[index];
-
-  //       // Use the minimum of eventHour or remainingHours for display title and calculation
-  //       const applicableHours = Math.min(eventHour, remainingHours);
-  //       const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
-
-  //       // Adjust remainingHours only if it is more than or equal to applicableHours
-  //       if (remainingHours >= applicableHours) { remainingHours -= applicableHours; }
-
-  //       return {
-  //         jobID: job.jobID,
-  //         title: eventTitle,
-  //         date,
-  //         backgroundColor: job.backgroundColor,
-  //       };
-  //     });
-
-  //     // Add a special event for shipping date
-  //     if (job.shippingDate) {
-  //       expandedEvents.push({
-  //         jobID: job.jobID,
-  //         title: `${job.title}: Shipping Date`,
-  //         date: job.shippingDate,
-  //         backgroundColor: job.backgroundColor, // A distinct color for shipping events
-  //       });
-  //     }
-
-  //     return acc.concat(expandedEvents);
-  //   }, []);
-
-  //   setEvents(updatedEvents);
-  // };
-
   //////////////////////////////  RESIZE EVENTS  //////////////////////////////
   const handleEventResize = (info: any) => {
     const { event } = info;
@@ -435,17 +405,20 @@ const Calendar: React.FC = () => {
     const isLastEvent = job?.eventDates[job.eventDates.length - 1] === event.startStr;
 
     if (job) {
-      if (!isLastEvent) { info.revert(); return; }; // If not the last event, prevent resizing
-      
-      // Ensure resizing does not go onto or beyond the shipping date
+      if (!isLastEvent) { info.revert(); return; };
+
       if (event.start && event.end) {
         const shippingDate = new Date(job.shippingDate);
         shippingDate.setDate(shippingDate.getDate() + 1);
-        if (event.end >= shippingDate) {
-          setToastText("Resize rejected: Resizing would extend onto or beyond the shipping date.");
-          setShowToast(true)
+        
+        const inHandDate = new Date(job.inHandDate);
+        inHandDate.setDate(inHandDate.getDate() + 1);
+
+        if (event.end >= shippingDate || event.end >= inHandDate) {
+          setToastText("Resize rejected: Resizing would extend onto or beyond the date limits.");
+          setShowToast(true);
           info.revert(); return;
-        };
+        }
     
         const differenceInTime = event.end.getTime() - event.start.getTime();
         const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
@@ -559,6 +532,25 @@ const Calendar: React.FC = () => {
     setIsInHandDateOpen(false);
   };
 
+  const setToNull = (myOption:string, myBool:boolean) => {
+    if (myOption === 'shipping') {
+      if (myBool) {
+        setShowShippingCalendar(true)
+      } else {
+        setShowShippingCalendar(false)
+        setNewJobShippingDate(null)
+      }
+    }
+    if (myOption === 'inHand') {
+      if (myBool) {
+        setShowInHandCalendar(true)
+      } else {
+        setShowInHandCalendar(false)
+        setNewJobInHandDate(null)
+      }
+    }
+  }
+
   return (
     <>
       <IonMenu menuId="selectedJobMenu" contentId="main-content">
@@ -624,7 +616,7 @@ const Calendar: React.FC = () => {
             <IonToggle
               slot="end"
               checked={showShippingCalendar}
-              onIonChange={e => setShowShippingCalendar(e.detail.checked)}
+              onIonChange={e => setToNull('shipping', e.detail.checked)}
             />
           </IonItem>
 
@@ -652,7 +644,7 @@ const Calendar: React.FC = () => {
             <IonToggle
               slot="end"
               checked={showInHandCalendar}
-              onIonChange={e => setShowInHandCalendar(e.detail.checked)}
+              onIonChange={e => setToNull('inHand', e.detail.checked)}
             />
           </IonItem>
 
@@ -720,8 +712,8 @@ const Calendar: React.FC = () => {
               onIonChange={e => setNewJobEndDate(e.detail.checked)}
             />
           </IonItem>
-          
         </IonContent>
+          <IonButton>Create Job</IonButton>
       </IonMenu>
 
 
