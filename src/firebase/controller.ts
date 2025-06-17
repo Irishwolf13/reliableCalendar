@@ -1,19 +1,21 @@
 import { db } from "../firebase/config"; // Ensure the correct path is used
-import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs, addDoc, getDoc } from "firebase/firestore";
-
+import { collection, query, onSnapshot, QuerySnapshot, doc, updateDoc, where, getDocs, addDoc, getDoc, deleteDoc } from "firebase/firestore";
+import { v4 as uuidv4 } from 'uuid';
 
 //////////////////////////////  GENERAL FUNCTIONS  //////////////////////////////
 
 // Define the Job interface if not already defined here or imported
 interface Job {
-  jobID: number;
+  jobID: string;
   title: string;
+  companyName: string;
   backgroundColor: string;
   eventDates: string[];
   eventHours: number[];
+  perDayHours: number;
   hours: number;
-  shippingDate: string;
-  inHandDate: string;
+  shippingDate: string | null;
+  inHandDate: string | null;
   calendarName: string;
 }
 
@@ -35,7 +37,9 @@ export const subscribeToJobs = (callback: (jobs: Job[]) => void): (() => void) =
         hours: data.hours,
         shippingDate: data.shippingDate,
         inHandDate: data.inHandDate,
-        calendarName: data.calendarName
+        calendarName: data.calendarName,
+        companyName: data.companyName,
+        perDayHours: data.perDayHours,
       });
     });
     callback(jobs);
@@ -292,7 +296,7 @@ export const removeArrayElement = async (email: string, fieldName: string, value
 //////////////////////////////  CALENDAR FUNCTIONS  //////////////////////////////
 
 export const updateJobEventDatesByNumberID = async (
-  jobId: number,
+  jobId: string,
   updatedEventDates: string[]
 ): Promise<void> => {
   try {
@@ -430,4 +434,103 @@ export const updateShippingOrInHandDate = async (
 };
 
 //////////////////////////////  SITE INFOMATION FUNCTIONS  //////////////////////////////
+export const createJobOnFirebase = async (jobDetails: {
+  backgroundColor: string;
+  companyName: string;
+  calendarName: string;
+  hours: number;
+  perDayHours: number;
+  title: string;
+  startDate: string | null;
+  endDate: boolean;
+  scheduled: boolean;
+  shippingDate: string | null;
+  inHandDate: string | null;
+}) => {
+  if (!jobDetails.startDate) {
+    console.error("Start date is missing");
+    return;
+  }
 
+  const jobID = uuidv4();
+
+  let remainingHours = jobDetails.hours;
+  const { perDayHours, startDate } = jobDetails;
+
+  const eventDates: string[] = [];
+  const eventHours: number[] = [];
+
+  let currentDate = new Date(startDate);
+
+  while (remainingHours > 0) {
+    const dayOfWeek = currentDate.getDay();
+    
+    if (dayOfWeek !== 6 && dayOfWeek !== 0) {
+      eventDates.push(currentDate.toISOString().substring(0, 10));
+      
+      const hoursForTheDay = Math.min(perDayHours, remainingHours);
+      eventHours.push(hoursForTheDay);
+      remainingHours -= hoursForTheDay;
+    }
+    
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  // Format shippingDate and inHandDate to 'YYYY-MM-DD'
+  const formatISODate = (isoString: string | null): string | null => {
+    return isoString ? isoString.substring(0, 10) : null;
+  };
+
+  const newJob: Job = {
+    jobID,
+    title: jobDetails.title,
+    companyName: jobDetails.companyName,
+    backgroundColor: jobDetails.backgroundColor,
+    eventDates,
+    eventHours,
+    perDayHours: jobDetails.perDayHours,
+    hours: jobDetails.hours,
+    shippingDate: formatISODate(jobDetails.shippingDate),
+    inHandDate: formatISODate(jobDetails.inHandDate),
+    calendarName: jobDetails.calendarName,
+  };
+
+  try {
+    await addDoc(collection(db, "jobs"), newJob);
+    console.log("Job added successfully");
+  } catch (error) {
+    console.error("Error adding job:", error);
+  }
+};
+
+// Delete a job by jobID
+export const deleteJobById = async (jobID: string): Promise<void> => {
+  try {
+    // Reference to the 'jobs' collection
+    const jobsCollectionRef = collection(db, "jobs");
+
+    // Query to find the document with the matching jobID
+    const q = query(jobsCollectionRef, where("jobID", "==", jobID));
+
+    // Execute the query
+    const querySnapshot = await getDocs(q);
+
+    // Check if any documents were found
+    if (querySnapshot.empty) {
+      console.log(`No job found with ID: ${jobID}`);
+      return;
+    }
+
+    // Loop through the documents and delete each one (there should only be one)
+    querySnapshot.forEach(async (documentSnapshot) => {
+      // Get a reference to the document
+      const docRef = doc(db, "jobs", documentSnapshot.id);
+
+      // Delete the document
+      await deleteDoc(docRef);
+      console.log(`Deleted job with ID: ${jobID}`);
+    });
+  } catch (error) {
+    console.error("Error deleting job:", error);
+  }
+};

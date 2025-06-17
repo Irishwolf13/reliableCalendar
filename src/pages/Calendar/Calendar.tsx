@@ -15,6 +15,8 @@ import {
   getCalendarNames,
   addCalendarName,
   removeCalendarName,
+  createJobOnFirebase,
+  deleteJobById,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -26,19 +28,20 @@ import { refreshOutline } from 'ionicons/icons';
 import './Calendar.css';
 
 interface Job {
-  jobID: number;
+  jobID: string;
   title: string;
   backgroundColor: string;
   eventDates: string[];
   eventHours: number[];
   hours: number;
-  shippingDate: string;
-  inHandDate: string;
+  shippingDate: string | null;
+  inHandDate: string | null;
   calendarName:string;
+  companyName: string;
 }
 
 interface CalendarEvent {
-  jobID: number;
+  jobID: string;
   title: string;
   date: string;
   backgroundColor: string;
@@ -50,13 +53,12 @@ const Calendar: React.FC = () => {
   const calendarRef = useRef<FullCalendar | null>(null);
 
   const [myJobs, setMyJobs] = useState<Job[]>([]);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [toastText, setToastText] = useState('');
 
   const [myTitle, setMyTitle] = useState('');
-  const [myJobNumber, setMyJobNumber] = useState(0);
+  const [myJobNumber, setMyJobNumber] = useState('');
   const [myJobDate, setMyJobDate] = useState('');
   const [refresh, setRefresh] = useState(false);
   const [newCalendarName, setNewCalendarName] = useState<string>('');
@@ -64,18 +66,36 @@ const Calendar: React.FC = () => {
   const [calendarNameToDelete, setCalendarNameToDelete] = useState<string | null>(null);
 
   // New Job useStates, should be made into an object at some point
-  const [newJobSelectedDate, setNewJobSelectedDate] = useState<string | null>('');
   const [newJobTitle, setNewJobTitle] = useState<string>('');
-  const [newJobTotalHours, setNewJobTotalHours] = useState<number>(0);
-  const [newJobPerDayHours, setNewJobPerDayHours] = useState<number>(0);
-  const [newJobColor, setNewJobColor] = useState<string>(''); // Adjusted for single select
+  const [newJobCompanyName, setNewJobCompanyName] = useState<string>('');
+  const [newJobSelectedDate, setNewJobSelectedDate] = useState<string | null>('');
   const [newJobShippingDate, setNewJobShippingDate] = useState<string | null>(null);
   const [newJobInHandDate, setNewJobInHandDate] = useState<string | null>(null);
-  const [newJobCalendar, setNewJobCalendar] = useState<string>(''); // Adjusted for single select
-  const [newJobScheduled, setNewJobScheduled] = useState<boolean>(true);
+  const [newJobColor, setNewJobColor] = useState<string>('');
+  const [newJobCalendar, setNewJobCalendar] = useState<string>(''); 
+  const [newJobTotalHours, setNewJobTotalHours] = useState<number>(0);
+  const [newJobPerDayHours, setNewJobPerDayHours] = useState<number>(0);
   const [newJobEndDate, setNewJobEndDate] = useState<boolean>(false);
+  const [newJobScheduled, setNewJobScheduled] = useState<boolean>(true);
+  
   const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
   const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
+
+  const resetValues = () => {
+    setNewJobTitle('');
+    setNewJobCompanyName('');
+    setNewJobSelectedDate('');
+    setNewJobShippingDate(null);
+    setNewJobInHandDate(null);
+    setNewJobColor('');
+    setNewJobCalendar(''); 
+    setNewJobTotalHours(0);
+    setNewJobPerDayHours(0);
+    setNewJobEndDate(false);
+    setNewJobScheduled(true);
+    setShowShippingCalendar(false);
+    setShowInHandCalendar(false);
+  }
 
   const calendarColors = ['Blue','Green','Purple','Pink','Orange','Yellow','Red','Light Blue','Light Green','Light Purple','Light Pink','Light Orange','Light Yellow','Light Red']
 
@@ -165,7 +185,7 @@ const Calendar: React.FC = () => {
 
   //////////////////////////////  FILTER OUT CALENDARS  //////////////////////////////
   interface Event { 
-    jobID: number; 
+    jobID: string; 
     title: string; 
     date: string; 
     backgroundColor: string;
@@ -181,7 +201,7 @@ const Calendar: React.FC = () => {
       const expandedEvents = job.eventDates.map((date, index) => {
         const eventHour = job.eventHours[index];
         const applicableHours = Math.min(eventHour, remainingHours);
-        const eventTitle = `${job.title} : ${applicableHours} / ${remainingHours}`;
+        const eventTitle = `${job.title} : ${remainingHours} / ${applicableHours} `;
 
         if (remainingHours >= applicableHours) {
           remainingHours -= applicableHours;
@@ -249,9 +269,24 @@ const Calendar: React.FC = () => {
     openSecondMenu()
   }
 
-  const createNewJob = () => {
-    // This is where we will create a new job and post it to the backend, which should trigger a front end refresh of jobs
-  }
+  const createNewJob = async () => {
+    const newJobInformation = {
+      backgroundColor: newJobColor,
+      calendarName: newJobCalendar,
+      hours: newJobTotalHours,
+      perDayHours: newJobPerDayHours,
+      title: newJobTitle,
+      companyName: newJobCompanyName,
+      startDate: newJobSelectedDate,
+      endDate: newJobEndDate,
+      scheduled: newJobScheduled,
+      shippingDate: newJobShippingDate,
+      inHandDate: newJobInHandDate,
+    };
+    await menuController.close('newJobMenu');
+    await createJobOnFirebase(newJobInformation);
+  };
+
 
   //////////////////////////////  HANDLE EVENTS BEING CLICKED  //////////////////////////////
   const handleEventClick = (info: any) => {
@@ -368,18 +403,19 @@ const Calendar: React.FC = () => {
                   currentDate.setDate(currentDate.getDate() + 1);
                   currentDate = getNextWeekday(currentDate);
                 }
-                
-                const shippingDate = new Date(job.shippingDate);
-                const invalidAfterMove = updatedEventDates.some(
-                  (eventDate) => new Date(eventDate) >= shippingDate
-                );
-
-                if (invalidAfterMove) {
-                  setToastText("Move rejected: Updated event dates would be on or after the shipping date.");
-                  setShowToast(true)
-                  info.revert();
-                  return job; // Return early if move should be rejected
+                if (job.shippingDate){
+                  const shippingDate = new Date(job.shippingDate);
+                  const invalidAfterMove = updatedEventDates.some(
+                    (eventDate) => new Date(eventDate) >= shippingDate
+                  );
+                  if (invalidAfterMove) {
+                    setToastText("Move rejected: Updated event dates would be on or after the shipping date.");
+                    setShowToast(true)
+                    info.revert();
+                    return job; // Return early if move should be rejected
+                  }
                 }
+
                 
                 updateJobEventDatesByNumberID(jobId, updatedEventDates);
 
@@ -407,67 +443,87 @@ const Calendar: React.FC = () => {
     if (job) {
       if (!isLastEvent) { info.revert(); return; };
 
-      if (event.start && event.end) {
-        const shippingDate = new Date(job.shippingDate);
-        shippingDate.setDate(shippingDate.getDate() + 1);
-        
-        const inHandDate = new Date(job.inHandDate);
-        inHandDate.setDate(inHandDate.getDate() + 1);
+      if (job.shippingDate){
+        if (event.start && event.end) {
+          const shippingDate = new Date(job.shippingDate);
+          shippingDate.setDate(shippingDate.getDate() + 1);
+          
+          if (job.inHandDate){
+            const inHandDate = new Date(job.inHandDate);
+            inHandDate.setDate(inHandDate.getDate() + 1);
 
-        if (event.end >= shippingDate || event.end >= inHandDate) {
-          setToastText("Resize rejected: Resizing would extend onto or beyond the date limits.");
-          setShowToast(true);
-          info.revert(); return;
-        }
-    
-        const differenceInTime = event.end.getTime() - event.start.getTime();
-        const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
-    
-        const newEvents: CalendarEvent[] = [];
-        for (let i = 0; i < totalDays; i++) {
-          const newDate = new Date(event.start);
-          newDate.setDate(event.start.getDate() + i);
-    
-          const dayOfWeek = newDate.getDay();
-          if (dayOfWeek === 6 || dayOfWeek === 0) { continue; }; // Skip weekends 
-    
-          newEvents.push({
-            jobID: event.extendedProps.jobID,
-            title: event.title,
-            date: newDate.toISOString().substring(0, 10),
-            backgroundColor: event.backgroundColor,
-          });
-        };
-    
-        setMyJobs(prevJobs => {
-          const newJobs = prevJobs.map(job => {
-            if (job.jobID === event.extendedProps.jobID) {
-              const newDates = newEvents.map(ev => ev.date);
-              const updatedEventDates = [...new Set([...job.eventDates, ...newDates])];
-    
-              // Update the Firestore document
-              updateJobEventDatesByNumberID(job.jobID, updatedEventDates);
-    
-              return {
-                ...job,
-                eventDates: updatedEventDates,
+            if (event.end >= shippingDate || event.end >= inHandDate) {
+              setToastText("Resize rejected: Resizing would extend onto or beyond the date limits.");
+              setShowToast(true);
+              info.revert(); return;
+            }
+          }
+          const differenceInTime = event.end.getTime() - event.start.getTime();
+          const totalDays = Math.floor(differenceInTime / (1000 * 3600 * 24));
+      
+          const newEvents: CalendarEvent[] = [];
+          for (let i = 0; i < totalDays; i++) {
+            const newDate = new Date(event.start);
+            newDate.setDate(event.start.getDate() + i);
+      
+            const dayOfWeek = newDate.getDay();
+            if (dayOfWeek === 6 || dayOfWeek === 0) { continue; }; // Skip weekends 
+      
+            newEvents.push({
+              jobID: event.extendedProps.jobID,
+              title: event.title,
+              date: newDate.toISOString().substring(0, 10),
+              backgroundColor: event.backgroundColor,
+            });
+          };
+      
+          setMyJobs(prevJobs => {
+            const newJobs = prevJobs.map(job => {
+              if (job.jobID === event.extendedProps.jobID) {
+                const newDates = newEvents.map(ev => ev.date);
+                const updatedEventDates = [...new Set([...job.eventDates, ...newDates])];
+      
+                // Update the Firestore document
+                updateJobEventDatesByNumberID(job.jobID, updatedEventDates);
+      
+                return {
+                  ...job,
+                  eventDates: updatedEventDates,
+                };
               };
-            };
-            return job;
+              return job;
+            });
+            return newJobs;
           });
-          return newJobs;
-        });
-    
-        const calendarApi = calendarRef.current?.getApi();
-        if (calendarApi) {
-          event.remove();
-          newEvents.forEach(newEvent => calendarApi.addEvent(newEvent));
+      
+          const calendarApi = calendarRef.current?.getApi();
+          if (calendarApi) {
+            event.remove();
+            newEvents.forEach(newEvent => calendarApi.addEvent(newEvent));
+          };
         };
-      };
+      }
     };
   };
 
-  //////////////////////////////  DELETE EVENT  //////////////////////////////
+  //////////////////////////////  DELETE FUNCTIONS  //////////////////////////////
+  const [showDeleteEventAlert, setShowDeleteEventAlert] = useState(false);
+  const [showDeleteJobAlert, setShowDeleteJobAlert] = useState(false);
+  const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
+
+  const handleDeleteEvent = (event: any) => {
+    setSelectedEventID(event.extendedProps.jobID);
+    setShowDeleteEventAlert(true);
+  };
+
+  const confirmDeleteEvent = () => {
+    if (selectedEventID !== null) {
+      deleteLastEventByJobID(selectedEventID);
+      setSelectedEventID(null); // Clear selected event ID after deletion
+    }
+    setShowDeleteEventAlert(false);
+  };
+
   const renderDeleteEventButton = (eventInfo: any) => {
     const myJobID = eventInfo.event.extendedProps.jobID;
     const myEventDate = eventInfo.event.startStr;
@@ -489,36 +545,28 @@ const Calendar: React.FC = () => {
     );
   };
 
-  const [showAlert, setShowAlert] = useState(false);
-  const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
-
-  const handleDeleteEvent = (event: any) => {
-    setSelectedEventID(event.extendedProps.jobID);
-    setShowAlert(true);
+  const handleDeleteJob = () => { 
+    setShowDeleteJobAlert(true); 
   };
 
-  const confirmDelete = () => {
-    if (selectedEventID !== null) {
-      deleteLastEventByJobID(selectedEventID);
-      setSelectedEventID(null); // Clear selected event ID after deletion
-    }
-    setShowAlert(false);
+  const confirmDeleteJob = async () => {
+    console.log('baleted')
+    deleteJobById(myJobNumber)
+    setShowDeleteJobAlert(false);
+    await menuController.close('selectedJobMenu');
   };
 
   //////////////////////////////  SIDE MENUS  //////////////////////////////
   async function openFirstMenu() { await menuController.open('selectedJobMenu'); }
   async function openSecondMenu() { await menuController.open('newJobMenu'); }
+
+  const handleMenuDismissed = () => {
+    resetValues()
+  };
   // async function openEndMenu() { await menuController.open('end'); }
 
 
-  //////////////////////////////  TESTING BUTTON  //////////////////////////////
-  // const handleTest = () => {
-  //   if (user && user.email) {
-  //     // editSiteInfoDocument(user.email, 'feildToChange', 'newValue')
-  //     // updateArrayElement(user.email, 'arrayName', (IndexNumber to change, 9999 to add), 'newValue')
-  //     // removeArrayElement(user.email, 'arrayName', 'valueToRemove')
-  //   }
-  // }
+  //////////////////////////////  SIDE MENU CALENDARS //////////////////////////////
   const [isShippingDateOpen, setIsShippingDateOpen] = useState<boolean>(false);
   const [isInHandDateOpen, setIsInHandDateOpen] = useState<boolean>(false);
   
@@ -565,9 +613,10 @@ const Calendar: React.FC = () => {
             {myJobNumber}
           </div>
         </IonContent>
+        <IonButton color="danger" onClick={handleDeleteJob}>Delete Job</IonButton>
       </IonMenu>
 
-      <IonMenu menuId="newJobMenu" contentId="main-content">
+      <IonMenu menuId="newJobMenu" contentId="main-content" onIonDidClose={handleMenuDismissed}>
         <IonHeader>
           <IonToolbar>
             <IonTitle>{newJobSelectedDate}</IonTitle>
@@ -581,6 +630,14 @@ const Calendar: React.FC = () => {
               value={newJobTitle}
               placeholder="Title"
               onIonChange={e => setNewJobTitle(e.detail.value!)}
+            />
+          </IonItem>
+          <IonItem>
+            <IonLabel slot="start">Company</IonLabel>
+            <IonInput
+              value={newJobCompanyName}
+              placeholder="Name"
+              onIonChange={e => setNewJobCompanyName(e.detail.value!)}
             />
           </IonItem>
 
@@ -713,7 +770,7 @@ const Calendar: React.FC = () => {
             />
           </IonItem>
         </IonContent>
-          <IonButton>Create Job</IonButton>
+          <IonButton onClick={createNewJob}>Create Job</IonButton>
       </IonMenu>
 
 
@@ -813,23 +870,25 @@ const Calendar: React.FC = () => {
           </div>
 
           <IonAlert
-          isOpen={showAlert}
-          onDidDismiss={() => setShowAlert(false)}
-          header={'Confirm Delete'}
-          message={'Are you sure you want to delete this event?'}
-          buttons={[
-            {
-              text: 'Cancel',
-              role: 'cancel',
-              handler: () => {
-                setShowAlert(false);
-              },
-            },
-            {
-              text: 'Delete',
-              handler: confirmDelete,
-            },
-          ]}
+            isOpen={showDeleteEventAlert}
+            onDidDismiss={() => setShowDeleteEventAlert(false)}
+            header={'Confirm Delete'}
+            message={'Are you sure you want to delete this event?'}
+            buttons={[
+              { text: 'Cancel', role: 'cancel', handler: () => { setShowDeleteEventAlert(false);},},
+              { text: 'Delete', handler: confirmDeleteEvent,},
+            ]}
+          />
+
+          <IonAlert
+            isOpen={showDeleteJobAlert}
+            onDidDismiss={() => setShowDeleteJobAlert(false)}
+            header={`Delete Job: ${myTitle}`}
+            message={`Are you sure you want to delete ${myTitle}?`}
+            buttons={[
+              { text: 'Cancel', role: 'cancel', handler: () => { setShowDeleteJobAlert(false);},},
+              { text: 'Delete', handler: confirmDeleteJob,},
+            ]}
           />
 
           <IonAlert
