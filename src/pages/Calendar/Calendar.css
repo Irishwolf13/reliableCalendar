@@ -3,7 +3,7 @@
   width: 100%;
 }
 
-.frank {
+.flex-basis {
   flex-basis: 300px;
 }
 
@@ -49,4 +49,28 @@
 
 .menuPadding {
   margin-bottom: 10px;
+}
+
+
+/* Custom styles for IonAlert buttons */
+.custom-alert .alert-button-group {
+  display: flex;
+  justify-content: space-between; /* Aligns the buttons to the edges */
+}
+
+.custom-alert .alert-button.role-cancel {
+  margin-right: auto; /* Pushes the cancel button to the far left */
+}
+
+
+.perDayModal {
+  --width: 200px;
+  --height: 120px;
+  --border-radius: 10px; /* Optional for rounded corners */
+}
+
+.perDayModal .modal-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }

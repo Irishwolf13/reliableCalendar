@@ -433,7 +433,7 @@ export const updateShippingOrInHandDate = async (
   }
 };
 
-//////////////////////////////  SITE INFOMATION FUNCTIONS  //////////////////////////////
+//////////////////////////////  JOB INFORMATION FUNCTIONS  //////////////////////////////
 export const createJobOnFirebase = async (jobDetails: {
   backgroundColor: string;
   companyName: string;
@@ -447,6 +447,11 @@ export const createJobOnFirebase = async (jobDetails: {
   shippingDate: string | null;
   inHandDate: string | null;
 }) => {
+  // Set default values 
+  const calendarName = jobDetails.calendarName === '' ? 'main' : jobDetails.calendarName;
+  const backgroundColor = jobDetails.backgroundColor === '' ? 'blue' : jobDetails.backgroundColor;
+  const title = jobDetails.title === '' ? 'New Job' : jobDetails.backgroundColor;
+
   if (!jobDetails.startDate) {
     console.error("Start date is missing");
     return;
@@ -483,16 +488,16 @@ export const createJobOnFirebase = async (jobDetails: {
 
   const newJob: Job = {
     jobID,
-    title: jobDetails.title,
+    title,
     companyName: jobDetails.companyName,
-    backgroundColor: jobDetails.backgroundColor,
+    backgroundColor,
     eventDates,
     eventHours,
     perDayHours: jobDetails.perDayHours,
     hours: jobDetails.hours,
     shippingDate: formatISODate(jobDetails.shippingDate),
     inHandDate: formatISODate(jobDetails.inHandDate),
-    calendarName: jobDetails.calendarName,
+    calendarName,
   };
 
   try {
@@ -502,6 +507,7 @@ export const createJobOnFirebase = async (jobDetails: {
     console.error("Error adding job:", error);
   }
 };
+
 
 // Delete a job by jobID
 export const deleteJobById = async (jobID: string): Promise<void> => {
@@ -532,5 +538,49 @@ export const deleteJobById = async (jobID: string): Promise<void> => {
     });
   } catch (error) {
     console.error("Error deleting job:", error);
+  }
+};
+
+// Update Per Day Hours
+export const updateEventHoursForDate = async (
+  jobID: string,
+  perDayHours: number,
+  date: string
+): Promise<void> => {
+  try {
+    // Reference to the 'jobs' collection
+    const jobsCollectionRef = collection(db, "jobs");
+
+    // Query to find the document with the matching jobID
+    const q = query(jobsCollectionRef, where("jobID", "==", jobID));
+
+    // Execute the query
+    const querySnapshot = await getDocs(q);
+
+    // Check if any documents were found
+    if (querySnapshot.empty) {
+      console.log(`No job found with ID: ${jobID}`);
+      return;
+    }
+
+    querySnapshot.forEach(async (documentSnapshot) => {
+      const jobData = documentSnapshot.data() as Job;
+
+      // Find the index of the matching date in the eventDates array
+      const dateIndex = jobData.eventDates.indexOf(date);
+      if (dateIndex === -1) {
+        console.log(`Date: ${date} not found in eventDates for jobID: ${jobID}`);
+        return;
+      }
+
+      // Update the eventHours at the found index
+      jobData.eventHours[dateIndex] = perDayHours;
+
+      // Update the document in Firestore with the modified eventHours
+      const docRef = doc(db, "jobs", documentSnapshot.id);
+      await updateDoc(docRef, { eventHours: jobData.eventHours });
+    });
+  } catch (error) {
+    console.error("Error updating event hours:", error);
   }
 };

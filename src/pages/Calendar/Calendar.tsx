@@ -17,6 +17,7 @@ import {
   removeCalendarName,
   createJobOnFirebase,
   deleteJobById,
+  updateEventHoursForDate,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -64,7 +65,7 @@ const Calendar: React.FC = () => {
   const [newCalendarName, setNewCalendarName] = useState<string>('');
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [calendarNameToDelete, setCalendarNameToDelete] = useState<string | null>(null);
-
+  
   // New Job useStates, should be made into an object at some point
   const [newJobTitle, setNewJobTitle] = useState<string>('');
   const [newJobCompanyName, setNewJobCompanyName] = useState<string>('');
@@ -80,7 +81,12 @@ const Calendar: React.FC = () => {
   
   const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
   const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
-
+  
+  const inputRef = useRef<HTMLIonInputElement>(null);
+  const [isPerDayHoursOpen, setIsPerDayHoursOpen] = useState<boolean>(false);
+  const [hoursPerDay, setHoursPerDay] = useState<number | null>(null);
+  const [currentSelectedDate, setCurrentSelectedDate] = useState<string | null>('');
+  
   const resetValues = () => {
     setNewJobTitle('');
     setNewJobCompanyName('');
@@ -129,7 +135,7 @@ const Calendar: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
-
+  
   //////////////////////////////  CALENDAR NAMES  //////////////////////////////
   useEffect(() => {
     getCalendarNames().then((names) => {
@@ -249,7 +255,7 @@ const Calendar: React.FC = () => {
 
   }, [myJobs, activeCalendars]);
 
-  //////////////////////////////  HANDLE DATE CLICKED  //////////////////////////////
+  //////////////////////////////  FORMATE DATE FOR VIEWING  //////////////////////////////
   const formatDateToView = (dateStr: string): string => {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) {
@@ -265,7 +271,6 @@ const Calendar: React.FC = () => {
   const handleDateClick = (arg:any) => {
     const formattedDate = formatDateToView(arg.dateStr);
     setNewJobSelectedDate(formattedDate)
-
     openSecondMenu()
   }
 
@@ -289,16 +294,32 @@ const Calendar: React.FC = () => {
 
 
   //////////////////////////////  HANDLE EVENTS BEING CLICKED  //////////////////////////////
-  const handleEventClick = (info: any) => {
+
+  const handleEventClick = (info:any) => {
     const { event } = info;
     const [titleBeforeColon] = event.title.split(':');
+
+    const [, perDayHoursString] = event.title.split('/');
+    const perDayHours = parseFloat(perDayHoursString);
+    setHoursPerDay(perDayHours)
+
     setMyTitle(titleBeforeColon);
     setMyJobNumber(event.extendedProps.jobID);
+    setCurrentSelectedDate(event.startStr)
 
     const formattedDate = formatDateToView(event.startStr);
     setMyJobDate(formattedDate);
 
-    openFirstMenu();
+    setIsPerDayHoursOpen(true)
+  };
+
+  const showJobDetails = () => {
+    setIsPerDayHoursOpen(false)
+    openFirstMenu()
+  }
+
+  const handlePerDayValueChange = () => {
+    if(hoursPerDay && currentSelectedDate) updateEventHoursForDate(myJobNumber, hoursPerDay, currentSelectedDate);
   };
 
   //////////////////////////////  TOGGLE HANDLER  //////////////////////////////
@@ -545,12 +566,7 @@ const Calendar: React.FC = () => {
     );
   };
 
-  const handleDeleteJob = () => { 
-    setShowDeleteJobAlert(true); 
-  };
-
   const confirmDeleteJob = async () => {
-    console.log('baleted')
     deleteJobById(myJobNumber)
     setShowDeleteJobAlert(false);
     await menuController.close('selectedJobMenu');
@@ -599,8 +615,45 @@ const Calendar: React.FC = () => {
     }
   }
 
+  // Handle Enter key press for perDay Modal
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handlePerDayValueChange();
+      setIsPerDayHoursOpen(false);
+    }
+  };
+
   return (
     <>
+      <IonModal
+        isOpen={isPerDayHoursOpen}
+        onDidDismiss={() => setIsPerDayHoursOpen(false)}
+        keepContentsMounted={true}
+        className="perDayModal"
+      >
+        <IonItem>
+          <IonInput
+            ref={inputRef}
+            labelPlacement="stacked"
+            label="Per Day Hours"
+            type="number"
+            value={hoursPerDay?.toString()}
+            placeholder={hoursPerDay?.toString()}
+            onIonInput={(e) => setHoursPerDay(parseFloat(e.detail.value!))}
+            onKeyDown={handleKeyPress}
+          />
+        </IonItem>
+        <div>
+          <IonButton onClick={showJobDetails}>Job Details</IonButton>
+          <IonButton
+            onClick={() => {
+              handlePerDayValueChange();
+              setIsPerDayHoursOpen(false);
+            }}
+          >OK</IonButton>
+        </div>
+      </IonModal>
+
       <IonMenu menuId="selectedJobMenu" contentId="main-content">
         <IonHeader>
           <IonToolbar>
@@ -610,10 +663,10 @@ const Calendar: React.FC = () => {
         <IonContent className="ion-padding">
           <div>{myTitle}</div>
           <div>
-            {myJobNumber}
+            
           </div>
         </IonContent>
-        <IonButton color="danger" onClick={handleDeleteJob}>Delete Job</IonButton>
+        <IonButton color="danger" onClick={() => setShowDeleteJobAlert(true)}>Delete Job</IonButton>
       </IonMenu>
 
       <IonMenu menuId="newJobMenu" contentId="main-content" onIonDidClose={handleMenuDismissed}>
@@ -807,7 +860,7 @@ const Calendar: React.FC = () => {
             Open End Menu
           </IonButton> */}
           <div className='mainPageHolder'>
-            <div className='frank'>
+            <div className='flex-basis'>
               {/* Render Toggle buttons */}
               {calendarNames.map((name) => (
                 <IonItem key={name}>
