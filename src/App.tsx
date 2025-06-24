@@ -1,4 +1,3 @@
-// App.tsx
 import React from 'react';
 import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
@@ -32,7 +31,12 @@ import Splash from './pages/Splash/Splash';
 import Login from './pages/Login/Login';
 import Calendar from './pages/Calendar/Calendar';
 
-setupIonicReact();
+// Configuring Ionic React globally to disable swipe gestures
+setupIonicReact({
+  mode: 'md', 
+  backButtonText: '',
+  swipeBackEnabled: false
+});
 
 const App: React.FC = () => (
   <IonApp>

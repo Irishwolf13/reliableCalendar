@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast, IonIcon, IonItem, IonLabel, IonToggle, IonInput, IonDatetime, IonSelectOption, IonSelect, IonDatetimeButton, IonModal } from '@ionic/react';
+import { IonButtons, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, IonButton, IonFooter, useIonViewDidEnter, IonBackButton, IonAlert, IonMenu, IonToast, IonIcon, IonItem, IonLabel, IonToggle, IonInput, IonDatetime, IonSelectOption, IonSelect, IonDatetimeButton, IonModal, IonCheckbox } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebase/config';
@@ -18,6 +18,7 @@ import {
   createJobOnFirebase,
   deleteJobById,
   updateEventHoursForDate,
+  deleteJobByCalendarName,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -25,7 +26,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 
 import { menuController } from '@ionic/core/components';
-import { refreshOutline } from 'ionicons/icons';
+import { menuOutline } from 'ionicons/icons';
 import './Calendar.css';
 
 interface Job {
@@ -72,10 +73,10 @@ const Calendar: React.FC = () => {
   const [newJobSelectedDate, setNewJobSelectedDate] = useState<string | null>('');
   const [newJobShippingDate, setNewJobShippingDate] = useState<string | null>(null);
   const [newJobInHandDate, setNewJobInHandDate] = useState<string | null>(null);
-  const [newJobColor, setNewJobColor] = useState<string>('');
-  const [newJobCalendar, setNewJobCalendar] = useState<string>(''); 
-  const [newJobTotalHours, setNewJobTotalHours] = useState<number>(0);
-  const [newJobPerDayHours, setNewJobPerDayHours] = useState<number>(0);
+  const [newJobColor, setNewJobColor] = useState<string>('Blue');
+  const [newJobCalendar, setNewJobCalendar] = useState<string>('main'); 
+  const [newJobTotalHours, setNewJobTotalHours] = useState<number | null>(null);
+  const [newJobPerDayHours, setNewJobPerDayHours] = useState<number | null>(null);
   const [newJobEndDate, setNewJobEndDate] = useState<boolean>(false);
   const [newJobScheduled, setNewJobScheduled] = useState<boolean>(true);
   
@@ -93,10 +94,10 @@ const Calendar: React.FC = () => {
     setNewJobSelectedDate('');
     setNewJobShippingDate(null);
     setNewJobInHandDate(null);
-    setNewJobColor('');
-    setNewJobCalendar(''); 
-    setNewJobTotalHours(0);
-    setNewJobPerDayHours(0);
+    setNewJobColor('Blue');
+    setNewJobCalendar('main'); 
+    setNewJobTotalHours(null);
+    setNewJobPerDayHours(null);
     setNewJobEndDate(false);
     setNewJobScheduled(true);
     setShowShippingCalendar(false);
@@ -104,26 +105,24 @@ const Calendar: React.FC = () => {
   }
 
   const calendarColors = ['Blue','Green','Purple','Pink','Orange','Yellow','Red','Light Blue','Light Green','Light Purple','Light Pink','Light Orange','Light Yellow','Light Red']
-
-  // New state for managing calendar names and toggles
   const [calendarNames, setCalendarNames] = useState<string[]>([]);
   const [activeCalendars, setActiveCalendars] = useState<{[key: string]: boolean}>({});
 
-  useIonViewDidEnter(() => {
-    setTimeout(() => {
-      const calendarApi = calendarRef.current?.getApi();
-      if (calendarApi) { calendarApi.updateSize(); calendarApi.gotoDate(new Date()); }
-    }, 200);
-  });
+  // useIonViewDidEnter(() => {
+  //   setTimeout(() => {
+  //     const calendarApi = calendarRef.current?.getApi();
+  //     if (calendarApi) { calendarApi.updateSize(); calendarApi.gotoDate(new Date()); }
+  //   }, 200);
+  // });
+
+  // const handleTodayButtonClick = () => {
+  //   const calendarApi = calendarRef.current?.getApi();
+  //   if (calendarApi) { calendarApi.today(); }
+  // };
 
   const handleLogout = async () => {
     try { await signOut(auth); history.push('/login');
     } catch (error) { console.error('Error signing out:', error); }
-  };
-
-  const handleTodayButtonClick = () => {
-    const calendarApi = calendarRef.current?.getApi();
-    if (calendarApi) { calendarApi.today(); }
   };
 
   //////////////////////////////  REAL TIME UPDATING  //////////////////////////////
@@ -149,9 +148,9 @@ const Calendar: React.FC = () => {
     });
   }, [refresh]);
 
-  const refreshButtonClicked = () => {
-    setRefresh(prevRefresh => !prevRefresh);
-  }
+  // const refreshButtonClicked = () => {
+  //   setRefresh(prevRefresh => !prevRefresh);
+  // }
 
     const handleAddCalendar = async () => {
     if (newCalendarName.trim() !== '') {
@@ -171,7 +170,9 @@ const Calendar: React.FC = () => {
   const confirmDeleteCalendar = async () => {
     if (calendarNameToDelete) {
       try {
+        await deleteJobByCalendarName(calendarNameToDelete);
         await removeCalendarName(calendarNameToDelete);
+        
         setCalendarNames((current) =>
           current.filter((calendarName) => calendarName !== calendarNameToDelete)
         );
@@ -268,19 +269,24 @@ const Calendar: React.FC = () => {
 
 
   //////////////////////////////  HANDLE DATE CLICKED  //////////////////////////////
-  const handleDateClick = (arg:any) => {
+  const handleDateClick = (arg: any) => {
+    const clickedDate = new Date(arg.dateStr);
+    const dayOfWeek = clickedDate.getDay();
+    if (dayOfWeek === 6 || dayOfWeek === 5) return
+
+    // Continue with the existing logic for weekdays
     const formattedDate = formatDateToView(arg.dateStr);
-    setNewJobSelectedDate(formattedDate)
-    openSecondMenu()
-  }
+    setNewJobSelectedDate(formattedDate);
+    openSecondMenu();
+  };
 
   const createNewJob = async () => {
     const newJobInformation = {
-      backgroundColor: newJobColor,
-      calendarName: newJobCalendar,
-      hours: newJobTotalHours,
-      perDayHours: newJobPerDayHours,
-      title: newJobTitle,
+      backgroundColor: newJobColor || 'Blue',
+      calendarName: newJobCalendar || 'main',
+      hours: newJobTotalHours || 0,
+      perDayHours: newJobPerDayHours || 0,
+      title: newJobTitle || 'New Job',
       companyName: newJobCompanyName,
       startDate: newJobSelectedDate,
       endDate: newJobEndDate,
@@ -530,12 +536,17 @@ const Calendar: React.FC = () => {
   //////////////////////////////  DELETE FUNCTIONS  //////////////////////////////
   const [showDeleteEventAlert, setShowDeleteEventAlert] = useState(false);
   const [showDeleteJobAlert, setShowDeleteJobAlert] = useState(false);
-  const [selectedEventID, setSelectedEventID] = useState<number | null>(null);
+  const [selectedEventID, setSelectedEventID] = useState<string | null>(null);
 
   const handleDeleteEvent = (event: any) => {
     setSelectedEventID(event.extendedProps.jobID);
     setShowDeleteEventAlert(true);
   };
+
+  const handlePhoneDeleteEvent = () => {
+    setSelectedEventID(myJobNumber);
+    setShowDeleteEventAlert(true);
+  }
 
   const confirmDeleteEvent = () => {
     if (selectedEventID !== null) {
@@ -552,7 +563,7 @@ const Calendar: React.FC = () => {
     const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div className='calendarEvent'>
         <span>{eventInfo.event.title}</span>
         {isLastEvent && (
           <button className='deleteButton'
@@ -575,11 +586,11 @@ const Calendar: React.FC = () => {
   //////////////////////////////  SIDE MENUS  //////////////////////////////
   async function openFirstMenu() { await menuController.open('selectedJobMenu'); }
   async function openSecondMenu() { await menuController.open('newJobMenu'); }
+  async function openCalendarMenu() { await menuController.open('calendarMenu'); }
 
   const handleMenuDismissed = () => {
     resetValues()
   };
-  // async function openEndMenu() { await menuController.open('end'); }
 
 
   //////////////////////////////  SIDE MENU CALENDARS //////////////////////////////
@@ -623,6 +634,10 @@ const Calendar: React.FC = () => {
     }
   };
 
+  const handleMenuClose = async () => {
+    await menuController.close('calendarMenu');
+  };
+
   return (
     <>
       <IonModal
@@ -637,6 +652,7 @@ const Calendar: React.FC = () => {
             labelPlacement="stacked"
             label="Per Day Hours"
             type="number"
+            inputmode="numeric"
             value={hoursPerDay?.toString()}
             placeholder={hoursPerDay?.toString()}
             onIonInput={(e) => setHoursPerDay(parseFloat(e.detail.value!))}
@@ -644,6 +660,7 @@ const Calendar: React.FC = () => {
           />
         </IonItem>
         <div>
+          <IonButton onClick={() => handlePhoneDeleteEvent()} className='phoneOnly' color='danger'>Remove Day</IonButton>
           <IonButton onClick={showJobDetails}>Job Details</IonButton>
           <IonButton
             onClick={() => {
@@ -654,7 +671,7 @@ const Calendar: React.FC = () => {
         </div>
       </IonModal>
 
-      <IonMenu menuId="selectedJobMenu" contentId="main-content">
+      <IonMenu menuId="selectedJobMenu" contentId="main-content" swipeGesture={false}>
         <IonHeader>
           <IonToolbar>
             <IonTitle>{myJobDate}</IonTitle>
@@ -669,7 +686,7 @@ const Calendar: React.FC = () => {
         <IonButton color="danger" onClick={() => setShowDeleteJobAlert(true)}>Delete Job</IonButton>
       </IonMenu>
 
-      <IonMenu menuId="newJobMenu" contentId="main-content" onIonDidClose={handleMenuDismissed}>
+      <IonMenu menuId="newJobMenu" contentId="main-content" onIonDidClose={handleMenuDismissed} swipeGesture={false}>
         <IonHeader>
           <IonToolbar>
             <IonTitle>{newJobSelectedDate}</IonTitle>
@@ -698,6 +715,8 @@ const Calendar: React.FC = () => {
             <IonLabel slot="start">Total Hours</IonLabel>
             <IonInput
               type="number"
+              inputmode="numeric"
+              placeholder='0'
               value={newJobTotalHours}
               onIonChange={e => setNewJobTotalHours(parseFloat(e.detail.value!))}
             />
@@ -707,6 +726,8 @@ const Calendar: React.FC = () => {
             <IonLabel slot="start">PerDay</IonLabel>
             <IonInput
               type="number"
+              inputmode="numeric"
+              placeholder='0'
               value={newJobPerDayHours}
               onIonChange={e => setNewJobPerDayHours(parseFloat(e.detail.value!))}
             />
@@ -826,49 +847,19 @@ const Calendar: React.FC = () => {
           <IonButton onClick={createNewJob}>Create Job</IonButton>
       </IonMenu>
 
-
-      {/* <IonMenu side="end" contentId="main-content">
+      <IonMenu side='end' menuId="calendarMenu" contentId="main-content" swipeGesture={false}>
         <IonHeader>
           <IonToolbar>
-            <IonTitle>End Menu</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-        <IonContent className="ion-padding">This is the end menu content.</IonContent>
-      </IonMenu> */}
-
-      <IonPage id="main-content" className='mainContent'>
-        <IonHeader>
-          <IonToolbar>
-            <IonButtons slot="start">
-              <IonBackButton></IonBackButton>
-            </IonButtons>
-              <IonTitle>Reliable Calendar</IonTitle>
-            <IonButtons slot="end">
-              <IonButton onClick={handleLogout}>Logout</IonButton>
+            <IonButtons slot='end'>
+              <IonButton onClick={handleMenuClose}>Close</IonButton>
             </IonButtons>
           </IonToolbar>
         </IonHeader>
-
-        <IonContent>
-          {/* <IonButton expand="block" onClick={openFirstMenu}>
-            Open First Menu
-          </IonButton>
-          <IonButton expand="block" onClick={openSecondMenu}>
-            Open Second Menu
-          </IonButton>
-          <IonButton expand="block" onClick={openEndMenu}>
-            Open End Menu
-          </IonButton> */}
-          <div className='mainPageHolder'>
-            <div className='flex-basis'>
-              {/* Render Toggle buttons */}
+        <IonContent className="ion-padding">
+          <div className='flex-basis'>
               {calendarNames.map((name) => (
                 <IonItem key={name}>
                   <IonLabel>{name}</IonLabel>
-                  <IonToggle
-                    checked={activeCalendars[name]}
-                    onIonChange={() => handleToggleCalendar(name)}
-                  />
               {name !== "main" && name !== 'shipping' && ( // Conditionally render the delete button
                 <IonButton 
                   color="danger"
@@ -888,29 +879,54 @@ const Calendar: React.FC = () => {
                 />
                 <IonButton color="success" onClick={handleAddCalendar}>+</IonButton>
               </IonItem>
-              <IonButton onClick={refreshButtonClicked}>
+              {/* <IonButton onClick={refreshButtonClicked}>
                 <IonIcon icon={refreshOutline} slot="icon-only" />
-              </IonButton>
+              </IonButton> */}
             </div>
+        </IonContent>
+              <IonButton onClick={handleLogout}>Logout</IonButton>
+      </IonMenu>
+
+      <IonPage id="main-content">
+        <IonHeader>
+          <IonToolbar>
+            <IonButtons slot="start">
+            </IonButtons>
+              <IonTitle>Reliable Calendar</IonTitle>
+            <IonButtons slot="end">
+                <IonButton onClick={openCalendarMenu}>
+                <IonIcon icon={menuOutline} slot="icon-only" />
+              </IonButton>
+            </IonButtons>
+          </IonToolbar>
+        </IonHeader>
+
+        <IonContent>
+          <div className='mainPageHolder'>
             <div className='calendarHolder'>
+            <div className='checkBoxHolder'>
+              {calendarNames.map((name) => (
+                <div className='checkBoxes' key={name}>
+                  <IonLabel className='checkBoxLables' >{name}</IonLabel>
+                    <input
+                      type="checkbox"
+                      checked={activeCalendars[name]}
+                      onChange={() => handleToggleCalendar(name)}
+                    />
+                </div>
+              ))}
+            </div>
               <FullCalendar
                 ref={calendarRef}
                 plugins={[dayGridPlugin, interactionPlugin]}
-                initialDate="2025-07-01"
                 initialView="dayGridYear"
-                height="87vh"
+                height="86vh"
                 editable={true}
                 events={filteredEvents}
-                customButtons={{
-                  myTodayButton: {
-                    text: 'Today',
-                    click: handleTodayButtonClick,
-                  }
-                }}
                 headerToolbar={{
                   left: 'prev,next today',
                   center: 'title',
-                  right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay,myTodayButton'
+                  right: 'dayGridYear,dayGridMonth,dayGridWeek,dayGridDay'
                 }}
                 eventDrop={handleEventDrop}
                 eventClick={handleEventClick}
@@ -948,7 +964,7 @@ const Calendar: React.FC = () => {
             isOpen={showDeleteAlert}
             onDidDismiss={() => setShowDeleteAlert(false)}
             header={"Confirm Delete"}
-            message={`Are you sure you want to delete the calendar "${calendarNameToDelete}"?`}
+            message={`Are you sure you want to delete the calendar "${calendarNameToDelete}"? This will delete all events on that calendar.`}
             buttons={[
               {
                 text: "Cancel",
@@ -970,9 +986,7 @@ const Calendar: React.FC = () => {
           onDidDismiss={() => setShowToast(false)} // Reset the toast visibility
         />
         <IonFooter>
-          <IonToolbar>
-            <IonTitle size="small">© 2025 Dancing Goat Studios</IonTitle>
-          </IonToolbar>
+          <div className='footer'>© 2025 Dancing Goat Studios</div>
         </IonFooter>
       </IonPage>
     </>

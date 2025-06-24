@@ -1,15 +1,43 @@
-.mainPageHolder {
-  display: flex; /* Use flexbox to manage layout */
-  width: 100%;
+/* .mainContent {
+  height: 100vh;
+} */
+.flex {
+  display: flex;
 }
 
-.flex-basis {
-  flex-basis: 300px;
+.footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: small;
+}
+
+.calendarEvent {
+  display: flex;
+  height: 1rem;
+  color: #ffffff;
+  overflow: hidden;
+  align-items: center;
+}
+
+.checkBoxes {
+  margin-right: 10px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+.checkBoxLables {
+  margin-right: 5px;
+}
+
+.checkBoxHolder {
+  display: flex;
+  justify-content: right;
 }
 
 .calendarHolder {
   flex-basis: 100%;
-  background-color: rgb(0, 11, 36);
+  background-color: rgb(0, 0, 0);
 }
 
 .fc-daygrid-day-number {
@@ -18,7 +46,7 @@
 
 .fc-theme-standard .fc-scrollgrid td, 
 .fc-theme-standard th {
-  border-color: #00f7ff; /* Change this color to your desired grid line color */
+  border-color: #ffffff
 }
 
 .fc-day-today {
@@ -31,26 +59,13 @@
   background-color: #880000;
   border: solid #880000 1px;
   border-radius: 30%;
+  height: 0.7rem;
+  font-size: 0.7rem;
 }
-/* style={{ marginLeft: 'auto', marginRight: '5px', backgroundColor: 'red' }} */
-@media only screen and (max-width: 900px) {
-  /* Target the FullCalendar cells */
-  .fc-daygrid-day-frame { 
-    font-size: 10px;  /* Set the desired font size */
-  }
-
-  /* If needed, target other elements like event text */
-  .fc-event-title {
-    font-size: 0.8rem;
-  }
-}
-
-
 
 .menuPadding {
   margin-bottom: 10px;
 }
-
 
 /* Custom styles for IonAlert buttons */
 .custom-alert .alert-button-group {
@@ -63,14 +78,57 @@
 }
 
 
-.perDayModal {
-  --width: 200px;
-  --height: 120px;
-  --border-radius: 10px; /* Optional for rounded corners */
+.fc-daygrid-day-number {
+  font-size: 1rem;
+}
+.fc-daygrid-body {
+  font-size: 1rem;
 }
 
-.perDayModal .modal-wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.phoneOnly {
+  visibility: hidden;
+}
+
+.fc .fc-col-header-cell-cushion {
+  font-size: 0.8rem;
+}
+
+.fc-day-sat,
+.fc-day-sun {
+    background-color: #0a002e;
+}
+
+@media only screen and (max-width: 900px) {
+  .fc-daygrid-day-number {
+    font-size: 0.45rem;
+  }
+    /* Target the FullCalendar cells */
+  .fc-daygrid-day-frame { 
+    font-size: 0.4rem;  /* Set the desired font size */
+  }
+
+  /* Make sure to target the specific elements within the toolbar */
+  .fc-toolbar-title {
+    font-size: 0.9rem !important;
+  }
+  
+  .fc-toolbar button {
+    font-size: 0.5rem !important;
+    padding: 2px 7px !important; /* Adjust padding to shrink button size */
+  }
+
+  /* Ensure button icons are also resized */
+  .fc-toolbar button .fc-icon {
+    font-size: 0.5rem !important;
+  }
+  .calendarEvent {
+    font-size: 0.4rem;
+    color: #ffffff;
+  }
+  .deleteButton {
+    visibility: hidden;
+  }
+  .phoneOnly {
+    visibility: visible;
+  }
 }

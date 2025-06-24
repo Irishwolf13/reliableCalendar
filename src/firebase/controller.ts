@@ -351,7 +351,7 @@ export const updateJobEventDatesByNumberID = async (
 };
 
 // Function to delete the last eventDate and eventHour by job ID
-export const deleteLastEventByJobID = async (jobId: number): Promise<void> => {
+export const deleteLastEventByJobID = async (jobId: string): Promise<void> => {
   try {
     if (!jobId) {
       throw new Error('Invalid Job ID');
@@ -450,7 +450,7 @@ export const createJobOnFirebase = async (jobDetails: {
   // Set default values 
   const calendarName = jobDetails.calendarName === '' ? 'main' : jobDetails.calendarName;
   const backgroundColor = jobDetails.backgroundColor === '' ? 'blue' : jobDetails.backgroundColor;
-  const title = jobDetails.title === '' ? 'New Job' : jobDetails.backgroundColor;
+  const title = jobDetails.title === '' ? 'New Job' : jobDetails.title;
 
   if (!jobDetails.startDate) {
     console.error("Start date is missing");
@@ -459,13 +459,15 @@ export const createJobOnFirebase = async (jobDetails: {
 
   const jobID = uuidv4();
 
-  let remainingHours = jobDetails.hours;
-  const { perDayHours, startDate } = jobDetails;
+  // Provide default values if null
+  const perDayHours = jobDetails.perDayHours || 8; // Default to 8 hours/day
+  const hours = jobDetails.hours || 40; // Default to 40 total hours
 
+  let remainingHours = hours;
   const eventDates: string[] = [];
   const eventHours: number[] = [];
 
-  let currentDate = new Date(startDate);
+  let currentDate = new Date(jobDetails.startDate);
 
   while (remainingHours > 0) {
     const dayOfWeek = currentDate.getDay();
@@ -493,8 +495,8 @@ export const createJobOnFirebase = async (jobDetails: {
     backgroundColor,
     eventDates,
     eventHours,
-    perDayHours: jobDetails.perDayHours,
-    hours: jobDetails.hours,
+    perDayHours,
+    hours,
     shippingDate: formatISODate(jobDetails.shippingDate),
     inHandDate: formatISODate(jobDetails.inHandDate),
     calendarName,
@@ -507,7 +509,6 @@ export const createJobOnFirebase = async (jobDetails: {
     console.error("Error adding job:", error);
   }
 };
-
 
 // Delete a job by jobID
 export const deleteJobById = async (jobID: string): Promise<void> => {
@@ -538,6 +539,37 @@ export const deleteJobById = async (jobID: string): Promise<void> => {
     });
   } catch (error) {
     console.error("Error deleting job:", error);
+  }
+};
+
+export const deleteJobByCalendarName = async (calendarName: string): Promise<void> => {
+  try {
+    // Reference to the 'jobs' collection
+    const jobsCollectionRef = collection(db, "jobs");
+
+    // Query to find all jobs with the matching calendarName
+    const q = query(jobsCollectionRef, where("calendarName", "==", calendarName));
+
+    // Execute the query
+    const querySnapshot = await getDocs(q);
+
+    // Check if any documents were found
+    if (querySnapshot.empty) {
+      console.log(`No jobs found with calendar name: ${calendarName}`);
+      return;
+    }
+
+    // Loop through the documents and delete each one
+    querySnapshot.forEach(async (documentSnapshot) => {
+      // Get a reference to the document
+      const docRef = doc(db, "jobs", documentSnapshot.id);
+
+      // Delete the document
+      await deleteDoc(docRef);
+      console.log(`Deleted job with calendar name: ${calendarName}`);
+    });
+  } catch (error) {
+    console.error("Error deleting jobs by calendar name:", error);
   }
 };
 
