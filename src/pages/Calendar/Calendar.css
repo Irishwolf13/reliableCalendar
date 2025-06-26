@@ -15,7 +15,6 @@
 .calendarEvent {
   display: flex;
   height: 1rem;
-  color: #ffffff;
   overflow: hidden;
   align-items: center;
 }
@@ -37,7 +36,6 @@
 
 .calendarHolder {
   flex-basis: 100%;
-  background-color: rgb(0, 0, 0);
 }
 
 .fc-daygrid-day-number {

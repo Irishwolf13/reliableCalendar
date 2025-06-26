@@ -129,7 +129,6 @@ export const removeCalendarName = async (calendarNameToRemove: string): Promise<
 interface SiteInfo {
   email: string;
   calendarNames: string[];
-  viewSideMenu: boolean;
   id?: string; // Optional because it's added after creation
 }
 
@@ -151,7 +150,6 @@ export const createSiteInfoDocument = async (email: string): Promise<SiteInfo | 
     const siteInfo: SiteInfo = {
       email,
       calendarNames: ['main', 'secondary'],
-      viewSideMenu: true,
     };
 
     // Add the document to Firestore
@@ -446,6 +444,7 @@ export const createJobOnFirebase = async (jobDetails: {
   scheduled: boolean;
   shippingDate: string | null;
   inHandDate: string | null;
+  stages: Record<string, boolean>; // A record with string keys and boolean values
 }) => {
   // Set default values 
   const calendarName = jobDetails.calendarName === '' ? 'main' : jobDetails.calendarName;
@@ -484,11 +483,10 @@ export const createJobOnFirebase = async (jobDetails: {
   }
 
   // Format shippingDate and inHandDate to 'YYYY-MM-DD'
-  const formatISODate = (isoString: string | null): string | null => {
-    return isoString ? isoString.substring(0, 10) : null;
-  };
+  const formatISODate = (isoString: string | null): string | null =>
+    isoString ? isoString.substring(0, 10) : null;
 
-  const newJob: Job = {
+  const newJob = {
     jobID,
     title,
     companyName: jobDetails.companyName,
@@ -500,6 +498,7 @@ export const createJobOnFirebase = async (jobDetails: {
     shippingDate: formatISODate(jobDetails.shippingDate),
     inHandDate: formatISODate(jobDetails.inHandDate),
     calendarName,
+    stages: jobDetails.stages,
   };
 
   try {
@@ -614,5 +613,45 @@ export const updateEventHoursForDate = async (
     });
   } catch (error) {
     console.error("Error updating event hours:", error);
+  }
+};
+
+
+////////////////////////////// COLOR SELECTION AND SEARCH //////////////////////////////
+export const getBackgroundColor = async (email: string): Promise<string | null> => {
+  try {
+    const q = query(collection(db, 'siteInfo'), where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const doc = querySnapshot.docs[0]; // Assuming only one result needed
+      const data = doc.data();
+      return data.backgroundColor || null;
+    } else {
+      console.error(`No documents found with email: ${email}`);
+      return null;
+    }
+  } catch (error) {
+    console.error("Error getting backgroundColor:", error);
+    return null;
+  }
+};
+
+export const updateBackgroundColor = async (email: string, newColor: string): Promise<void> => {
+  try {
+    const q = query(collection(db, 'siteInfo'), where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      querySnapshot.forEach(async (doc) => {
+        // Assuming one match, but iterating in case there are multiple
+        await updateDoc(doc.ref, { backgroundColor: newColor });
+        console.log(`Updated backgroundColor to ${newColor} for email: ${email}`);
+      });
+    } else {
+      console.error(`No documents found with email: ${email}`);
+    }
+  } catch (error) {
+    console.error("Error updating backgroundColor:", error);
   }
 };

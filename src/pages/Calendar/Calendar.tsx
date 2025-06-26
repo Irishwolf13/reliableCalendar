@@ -19,6 +19,8 @@ import {
   deleteJobById,
   updateEventHoursForDate,
   deleteJobByCalendarName,
+  getBackgroundColor,
+  updateBackgroundColor,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -28,6 +30,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { menuController } from '@ionic/core/components';
 import { menuOutline } from 'ionicons/icons';
 import './Calendar.css';
+import ColorPicker from '../../components/ColorPicker';
 
 interface Job {
   jobID: string;
@@ -79,7 +82,13 @@ const Calendar: React.FC = () => {
   const [newJobPerDayHours, setNewJobPerDayHours] = useState<number | null>(null);
   const [newJobEndDate, setNewJobEndDate] = useState<boolean>(false);
   const [newJobScheduled, setNewJobScheduled] = useState<boolean>(true);
-  
+  const [newJobStages, setNewJobStages] = useState({
+    cnc: false,
+    hardware: false,
+    powderCoating: false,
+    productTag: false,
+    qualityTag: false
+  });
   const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
   const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
   
@@ -87,6 +96,13 @@ const Calendar: React.FC = () => {
   const [isPerDayHoursOpen, setIsPerDayHoursOpen] = useState<boolean>(false);
   const [hoursPerDay, setHoursPerDay] = useState<number | null>(null);
   const [currentSelectedDate, setCurrentSelectedDate] = useState<string | null>('');
+
+  // Color Selection
+  const [backgroundColor, setBackgroundColor] = useState<string>('#000000');
+  const handleColorSelect = (selectedColor: string) => {
+    setBackgroundColor(selectedColor);
+    if (user && user.email) updateBackgroundColor(user.email, selectedColor)
+  };
   
   const resetValues = () => {
     setNewJobTitle('');
@@ -108,17 +124,20 @@ const Calendar: React.FC = () => {
   const [calendarNames, setCalendarNames] = useState<string[]>([]);
   const [activeCalendars, setActiveCalendars] = useState<{[key: string]: boolean}>({});
 
-  // useIonViewDidEnter(() => {
-  //   setTimeout(() => {
-  //     const calendarApi = calendarRef.current?.getApi();
-  //     if (calendarApi) { calendarApi.updateSize(); calendarApi.gotoDate(new Date()); }
-  //   }, 200);
-  // });
+  // Function to update the boolean value of a specific stage
+  const handleToggleChange = (stage: string, isChecked: boolean) => {
+    setNewJobStages((prevStages) => ({
+      ...prevStages,
+      [stage]: isChecked
+    }));
+  };
 
-  // const handleTodayButtonClick = () => {
-  //   const calendarApi = calendarRef.current?.getApi();
-  //   if (calendarApi) { calendarApi.today(); }
-  // };
+  // Function to convert camelCase to Title Case
+  const formatStageName = (stage:string) => {
+    return stage
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase());
+  };
 
   const handleLogout = async () => {
     try { await signOut(auth); history.push('/login');
@@ -134,6 +153,28 @@ const Calendar: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+      const fetchBackgroundColor = async () => {
+        if (user && user.email) {
+          try {
+            const myColor = await getBackgroundColor(user.email);
+            
+            if (myColor) {
+              console.log(myColor)
+              setBackgroundColor(myColor);
+            } else {
+              setBackgroundColor('#000000');
+            }
+          } catch (error) {
+            console.error("Error fetching background color:", error);
+            setBackgroundColor('#000000'); // Fallback color in case of error
+          }
+        }
+      };
+
+      fetchBackgroundColor();
+    }, [user]);
   
   //////////////////////////////  CALENDAR NAMES  //////////////////////////////
   useEffect(() => {
@@ -281,6 +322,13 @@ const Calendar: React.FC = () => {
   };
 
   const createNewJob = async () => {
+    // Filter out the stages that are true and convert them to false
+    const filteredStages = Object.fromEntries(
+      Object.entries(newJobStages)
+        .filter(([_, value]) => value)
+        .map(([key, _]) => [key, false])
+    );
+
     const newJobInformation = {
       backgroundColor: newJobColor || 'Blue',
       calendarName: newJobCalendar || 'main',
@@ -293,7 +341,9 @@ const Calendar: React.FC = () => {
       scheduled: newJobScheduled,
       shippingDate: newJobShippingDate,
       inHandDate: newJobInHandDate,
+      stages: filteredStages, // Pass the transformed stages
     };
+
     await menuController.close('newJobMenu');
     await createJobOnFirebase(newJobInformation);
   };
@@ -563,7 +613,7 @@ const Calendar: React.FC = () => {
     const isLastEvent = job?.eventDates[job.eventDates.length - 1] === myEventDate;
 
     return (
-      <div className='calendarEvent'>
+      <div className='calendarEvent' style={{ color: '#ffffff'}}>
         <span>{eventInfo.event.title}</span>
         {isLastEvent && (
           <button className='deleteButton'
@@ -736,7 +786,7 @@ const Calendar: React.FC = () => {
           <IonItem>
             <IonLabel>Job Scheduled</IonLabel>
             <IonToggle
-          slot="end"
+              slot="end"
               checked={newJobScheduled}
               onIonChange={e => setNewJobScheduled(e.detail.checked)}
             />
@@ -778,6 +828,19 @@ const Calendar: React.FC = () => {
               onIonChange={e => setToNull('inHand', e.detail.checked)}
             />
           </IonItem>
+
+          <div className='menuPadding'></div>
+          <IonLabel>Requirements</IonLabel>
+          {Object.entries(newJobStages).map(([stage, isActive], index) => (
+            <IonItem key={index}>
+              <IonLabel>{formatStageName(stage)}</IonLabel>
+              <IonToggle
+                slot="end"
+                checked={isActive}
+                onIonChange={(e) => handleToggleChange(stage, e.detail.checked)}
+              />
+            </IonItem>
+          ))}
 
           {showInHandCalendar && (
             <IonItem>
@@ -857,6 +920,11 @@ const Calendar: React.FC = () => {
         </IonHeader>
         <IonContent className="ion-padding">
           <div className='flex-basis'>
+            <IonItem>
+              <IonLabel>Background</IonLabel>
+              <ColorPicker onColorSelect={handleColorSelect} />
+            </IonItem>
+            <h6>Calendar Names</h6>
               {calendarNames.map((name) => (
                 <IonItem key={name}>
                   <IonLabel>{name}</IonLabel>
@@ -884,7 +952,7 @@ const Calendar: React.FC = () => {
               </IonButton> */}
             </div>
         </IonContent>
-              <IonButton onClick={handleLogout}>Logout</IonButton>
+        <IonButton onClick={handleLogout}>Logout</IonButton>
       </IonMenu>
 
       <IonPage id="main-content">
@@ -902,7 +970,7 @@ const Calendar: React.FC = () => {
         </IonHeader>
 
         <IonContent>
-          <div className='mainPageHolder'>
+          <div className='mainPageHolder' style={{ backgroundColor: backgroundColor }}>
             <div className='calendarHolder'>
             <div className='checkBoxHolder'>
               {calendarNames.map((name) => (
