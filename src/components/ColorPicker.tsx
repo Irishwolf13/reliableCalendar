@@ -1,19 +1,24 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { debounce } from '../utilities/Debounce';
 
 interface ColorPickerProps {
   onColorSelect: (color: string) => void;
+  initialColor: string; // Add initialColor prop
 }
 
-const ColorPicker: React.FC<ColorPickerProps> = ({ onColorSelect }) => {
-  const [selectedColor, setSelectedColor] = useState<string>('#000000');
+const ColorPicker: React.FC<ColorPickerProps> = ({ onColorSelect, initialColor }) => {
+  const [selectedColor, setSelectedColor] = useState<string>(initialColor); // Use initialColor for initial state
 
   const debouncedColorSelect = useCallback(
     debounce((color: string) => {
       onColorSelect(color);
-    }, 300), // Adjust the delay as needed
+    }, 300),
     [onColorSelect]
   );
+
+  useEffect(() => {
+    setSelectedColor(initialColor); // Update selected color when initialColor changes
+  }, [initialColor]);
 
   const handleColorChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const color = event.target.value;

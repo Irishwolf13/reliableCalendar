@@ -655,3 +655,91 @@ export const updateCalendarBackgroundColor = async (email: string, newColor: str
     console.error("Error updating backgroundColor:", error);
   }
 };
+
+
+export const getEventColors = async (): Promise<Record<string, string>[] | null> => {
+  try {
+    // Accessing the specific document by its ID
+    const docRef = doc(db, 'siteInfo', 'backgroundColors');
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+
+      if (data && Array.isArray(data.colors)) {
+        const colorsArray: Record<string, string>[] = data.colors;
+        return colorsArray;  // Return the array directly
+      } else {
+        console.error("No valid colors array found in the document.");
+        return null;
+      }
+    } else {
+      console.error("Document backgroundColors not found.");
+      return null;
+    }
+  } catch (error) {
+    console.error("Error getting event colors:", error);
+    return null;
+  }
+};
+
+// Function to update event color in Firestore
+export const updateEventColor = async (
+  colorName: string,
+  newColorValue: string
+): Promise<void> => {
+  try {
+    // Reference to the specific document by its ID
+    const docRef = doc(db, 'siteInfo', 'backgroundColors');
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+
+      if (data && Array.isArray(data.colors)) {
+        // Find the old color value
+        const oldColorObject = data.colors.find((colorObject: Record<string, string>) =>
+          colorObject.hasOwnProperty(colorName)
+        );
+        const oldColorValue = oldColorObject ? oldColorObject[colorName] : null;
+
+        if (oldColorValue !== null) {
+          // Update the specified color in the colors array
+          const updatedColors = data.colors.map((colorObject: Record<string, string>) => {
+            if (colorObject.hasOwnProperty(colorName)) {
+              return { [colorName]: newColorValue }; // Update the specific color value
+            }
+            return colorObject;
+          });
+
+          // Update the document with the new colors array
+          await updateDoc(docRef, { colors: updatedColors });
+          console.log(`Updated ${colorName} from ${oldColorValue} to ${newColorValue}`);
+
+          // Query jobs collection for documents with backgroundColor matching oldColorValue
+          const jobsCollectionRef = collection(db, 'jobs');
+          const q = query(jobsCollectionRef, where('backgroundColor', '==', oldColorValue));
+          const querySnapshot = await getDocs(q);
+
+          // Update each job document's backgroundColor to newColorValue
+          const batchUpdates = querySnapshot.docs.map(async (jobDoc) => {
+            const jobDocRef = doc(db, 'jobs', jobDoc.id);
+            await updateDoc(jobDocRef, { backgroundColor: newColorValue });
+            console.log(`Updated job ${jobDoc.id} backgroundColor to ${newColorValue}`);
+          });
+
+          // Wait for all updates to complete
+          await Promise.all(batchUpdates);
+        } else {
+          console.error(`No existing color found for ${colorName}`);
+        }
+      } else {
+        console.error("No valid colors array found in the document.");
+      }
+    } else {
+      console.error("Document backgroundColors not found.");
+    }
+  } catch (error) {
+    console.error("Error updating event color:", error);
+  }
+};

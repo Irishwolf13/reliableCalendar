@@ -21,6 +21,8 @@ import {
   deleteJobByCalendarName,
   getCalendarBackgroundColor,
   updateCalendarBackgroundColor,
+  getEventColors,
+  updateEventColor,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -56,6 +58,7 @@ const Calendar: React.FC = () => {
   const { user } = useAuth();
   const history = useHistory();
   const calendarRef = useRef<FullCalendar | null>(null);
+  const inputRef = useRef<HTMLIonInputElement>(null);
 
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
@@ -76,8 +79,8 @@ const Calendar: React.FC = () => {
   const [newJobSelectedDate, setNewJobSelectedDate] = useState<string | null>('');
   const [newJobShippingDate, setNewJobShippingDate] = useState<string | null>(null);
   const [newJobInHandDate, setNewJobInHandDate] = useState<string | null>(null);
-  const [newJobColor, setNewJobColor] = useState<string>('Blue');
-  const [newJobCalendar, setNewJobCalendar] = useState<string>('main'); 
+  const [newJobColor, setNewJobColor] = useState<string>('');
+  const [newJobCalendar, setNewJobCalendar] = useState<string>(''); 
   const [newJobTotalHours, setNewJobTotalHours] = useState<number | null>(null);
   const [newJobPerDayHours, setNewJobPerDayHours] = useState<number | null>(null);
   const [newJobEndDate, setNewJobEndDate] = useState<boolean>(false);
@@ -89,29 +92,14 @@ const Calendar: React.FC = () => {
     productTag: false,
     qualityTag: false
   });
-  const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
-  const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
-  
-  const inputRef = useRef<HTMLIonInputElement>(null);
-  const [isPerDayHoursOpen, setIsPerDayHoursOpen] = useState<boolean>(false);
-  const [hoursPerDay, setHoursPerDay] = useState<number | null>(null);
-  const [currentSelectedDate, setCurrentSelectedDate] = useState<string | null>('');
-
-  // Color Selection
-  const [backgroundColor, setBackgroundColor] = useState<string>('#000000');
-  const handleColorSelect = (selectedColor: string) => {
-    setBackgroundColor(selectedColor);
-    if (user && user.email) updateCalendarBackgroundColor(user.email, selectedColor)
-  };
-  
   const resetValues = () => {
     setNewJobTitle('');
     setNewJobCompanyName('');
     setNewJobSelectedDate('');
     setNewJobShippingDate(null);
     setNewJobInHandDate(null);
-    setNewJobColor('Blue');
-    setNewJobCalendar('main'); 
+    setNewJobColor('');
+    setNewJobCalendar(''); 
     setNewJobTotalHours(null);
     setNewJobPerDayHours(null);
     setNewJobEndDate(false);
@@ -119,67 +107,83 @@ const Calendar: React.FC = () => {
     setShowShippingCalendar(false);
     setShowInHandCalendar(false);
   }
+  const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
+  const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
+  const [isPerDayHoursOpen, setIsPerDayHoursOpen] = useState<boolean>(false);
+  
+  const [hoursPerDay, setHoursPerDay] = useState<number | null>(null);
+  const [currentSelectedDate, setCurrentSelectedDate] = useState<string | null>('');
 
-  const calendarColors = {
-    Blue: "#0000bf",
-    Green: "#008000"
-  };
+  const [backgroundColor, setBackgroundColor] = useState<string>('#000000');
+  const [calendarColors, setCalendarColors] = useState<Record<string, string>[]>([]);
   const [calendarNames, setCalendarNames] = useState<string[]>([]);
   const [activeCalendars, setActiveCalendars] = useState<{[key: string]: boolean}>({});
 
+  const handleColorSelect = (selectedColor: string) => {
+    setBackgroundColor(selectedColor);
+    if (user && user.email) updateCalendarBackgroundColor(user.email, selectedColor)
+  };
+  
+  const handleEventColorSelect = (colorName: string) => async (newColorValue: string) => {
+    await updateEventColor(colorName, newColorValue);
+  };
+
+  //////////////////////////////  LOGGING OUT  //////////////////////////////
   const handleLogout = async () => {
     try { await signOut(auth); history.push('/login');
     } catch (error) { console.error('Error signing out:', error); }
   };
 
-  //////////////////////////////  REAL TIME UPDATING  //////////////////////////////
+  //////////////////////////////  USE EFFECTS  //////////////////////////////
   useEffect(() => {
-    const unsubscribe = subscribeToJobs((jobs) => {
-      setMyJobs(jobs);
-    });
+    const unsubscribe = subscribeToJobs((jobs) => { setMyJobs(jobs); });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-      const fetchBackgroundColor = async () => {
-        if (user && user.email) {
-          try {
-            const myColor = await getCalendarBackgroundColor(user.email);
-            
-            if (myColor) {
-              console.log(myColor)
-              setBackgroundColor(myColor);
-            } else {
-              setBackgroundColor('#000000');
-            }
-          } catch (error) {
-            console.error("Error fetching background color:", error);
-            setBackgroundColor('#000000'); // Fallback color in case of error
-          }
-        }
-      };
+    const fetchEventColors = async () => {
+      try {
+        const colors = await getEventColors();
+        if (colors) { setCalendarColors(colors); }
+      } catch (error) { console.error("Error fetching event colors:", error); }
+    };
+    fetchEventColors();
+  }, []);
 
-      fetchBackgroundColor();
-    }, [user]);
+  useEffect(() => {
+    const fetchBackgroundColor = async () => {
+      if (user && user.email) {
+        try {
+          const myColor = await getCalendarBackgroundColor(user.email);
+          
+          if (myColor) {
+            setBackgroundColor(myColor);
+          } else {
+            setBackgroundColor('#000000');
+          }
+        } catch (error) {
+          console.error("Error fetching background color:", error);
+          setBackgroundColor('#000000'); // Fallback color in case of error
+        }
+      }
+    };
+
+    fetchBackgroundColor();
+  }, [user]);
   
-  //////////////////////////////  CALENDAR NAMES  //////////////////////////////
   useEffect(() => {
     getCalendarNames().then((names) => {
       setCalendarNames(names);
-      
-      // Initialize all calendars as active
       const initialActiveState = names.reduce((acc, name) => ({ ...acc, [name]: true }), {});
+
       setActiveCalendars(initialActiveState);
     }).catch((error) => {
       console.error("Error fetching calendar names:", error);
     });
   }, [refresh]);
-
-  // const refreshButtonClicked = () => {
-  //   setRefresh(prevRefresh => !prevRefresh);
-  // }
-
-    const handleAddCalendar = async () => {
+  
+  //////////////////////////////  CALENDAR NAMES  //////////////////////////////
+  const handleAddCalendar = async () => {
     if (newCalendarName.trim() !== '') {
       await addCalendarName(newCalendarName.trim());
 
@@ -218,12 +222,7 @@ const Calendar: React.FC = () => {
   };
 
   //////////////////////////////  FILTER OUT CALENDARS  //////////////////////////////
-  interface Event { 
-    jobID: string; 
-    title: string; 
-    date: string; 
-    backgroundColor: string;
-  }
+  interface Event { jobID: string; title: string; date: string; backgroundColor: string;}
 
   useEffect(() => {
     const isShippingActive = activeCalendars['shipping'];
@@ -881,14 +880,17 @@ const Calendar: React.FC = () => {
               slot="end"
               value={newJobColor}
               placeholder="Select"
-              onIonChange={e => setNewJobColor(e.detail.value)}
+              onIonChange={(e) => setNewJobColor(e.detail.value)}
               interface="popover" // Use popover for immediate selection
             >
-              {Object.keys(calendarColors).map(color => (
-                <IonSelectOption key={color} value={calendarColors[color as keyof typeof calendarColors]}>
-                  {color}
-                </IonSelectOption>
-              ))}
+              {calendarColors.map((colorObject, index) => {
+                const [[colorName, colorValue]] = Object.entries(colorObject);
+                return (
+                  <IonSelectOption key={index} value={colorValue}>
+                    {colorName}
+                  </IonSelectOption>
+                );
+              })}
             </IonSelect>
           </IonItem>
 
@@ -914,10 +916,13 @@ const Calendar: React.FC = () => {
         </IonHeader>
         <IonContent className="ion-padding">
           <div className='flex-basis'>
-            <IonItem>
-              <IonLabel>Background</IonLabel>
-              <ColorPicker onColorSelect={handleColorSelect} />
-            </IonItem>
+          <IonItem>
+            <IonLabel>Background</IonLabel>
+            <ColorPicker 
+              onColorSelect={handleColorSelect} 
+              initialColor={backgroundColor} // Pass the initial color
+            />
+          </IonItem>
 
             <h6>Calendar Names</h6>
             {calendarNames.map((name) => (
@@ -936,6 +941,20 @@ const Calendar: React.FC = () => {
               />
               <IonButton color="success" onClick={handleAddCalendar}>+</IonButton>
             </IonItem>
+
+            <h6>Event Color Selections</h6>
+            {calendarColors.map((colorObject, index) => {
+              const [[colorName, colorValue]] = Object.entries(colorObject);
+              return (
+                <IonItem key={index}>
+                  <IonLabel>{colorName}</IonLabel>
+                  <ColorPicker
+                    initialColor={colorValue}
+                    onColorSelect={handleEventColorSelect(colorName)}
+                  />
+                </IonItem>
+              );
+            })}
 
           </div>
         </IonContent>
