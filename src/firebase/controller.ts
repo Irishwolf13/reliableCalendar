@@ -646,7 +646,7 @@ export const updateCalendarBackgroundColor = async (email: string, newColor: str
       querySnapshot.forEach(async (doc) => {
         // Assuming one match, but iterating in case there are multiple
         await updateDoc(doc.ref, { backgroundColor: newColor });
-        console.log(`Updated backgroundColor to ${newColor} for email: ${email}`);
+        console.log(`Updated backgroundColor`);
       });
     } else {
       console.error(`No documents found with email: ${email}`);

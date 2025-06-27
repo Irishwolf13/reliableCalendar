@@ -106,6 +106,13 @@ const Calendar: React.FC = () => {
     setNewJobScheduled(true);
     setShowShippingCalendar(false);
     setShowInHandCalendar(false);
+    setNewJobStages({
+      cnc: false,
+      hardware: false,
+      powderCoating: false,
+      productTag: false,
+      qualityTag: false
+    })
   }
   const [showShippingCalendar, setShowShippingCalendar] = useState<boolean>(false);
   const [showInHandCalendar, setShowInHandCalendar] = useState<boolean>(false);
@@ -315,7 +322,7 @@ const Calendar: React.FC = () => {
     );
 
     const newJobInformation = {
-      backgroundColor: newJobColor || 'Blue',
+      backgroundColor: newJobColor || '#0000ff',
       calendarName: newJobCalendar || 'main',
       hours: newJobTotalHours || 0,
       perDayHours: newJobPerDayHours || 0,
@@ -945,6 +952,7 @@ const Calendar: React.FC = () => {
             <h6>Event Color Selections</h6>
             {calendarColors.map((colorObject, index) => {
               const [[colorName, colorValue]] = Object.entries(colorObject);
+
               return (
                 <IonItem key={index}>
                   <IonLabel>{colorName}</IonLabel>
