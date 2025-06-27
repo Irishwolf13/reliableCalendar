@@ -618,7 +618,7 @@ export const updateEventHoursForDate = async (
 
 
 ////////////////////////////// COLOR SELECTION AND SEARCH //////////////////////////////
-export const getBackgroundColor = async (email: string): Promise<string | null> => {
+export const getCalendarBackgroundColor = async (email: string): Promise<string | null> => {
   try {
     const q = query(collection(db, 'siteInfo'), where('email', '==', email));
     const querySnapshot = await getDocs(q);
@@ -637,7 +637,7 @@ export const getBackgroundColor = async (email: string): Promise<string | null> 
   }
 };
 
-export const updateBackgroundColor = async (email: string, newColor: string): Promise<void> => {
+export const updateCalendarBackgroundColor = async (email: string, newColor: string): Promise<void> => {
   try {
     const q = query(collection(db, 'siteInfo'), where('email', '==', email));
     const querySnapshot = await getDocs(q);

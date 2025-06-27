@@ -19,8 +19,8 @@ import {
   deleteJobById,
   updateEventHoursForDate,
   deleteJobByCalendarName,
-  getBackgroundColor,
-  updateBackgroundColor,
+  getCalendarBackgroundColor,
+  updateCalendarBackgroundColor,
 } from '../../firebase/controller';
 
 import FullCalendar from '@fullcalendar/react';
@@ -101,7 +101,7 @@ const Calendar: React.FC = () => {
   const [backgroundColor, setBackgroundColor] = useState<string>('#000000');
   const handleColorSelect = (selectedColor: string) => {
     setBackgroundColor(selectedColor);
-    if (user && user.email) updateBackgroundColor(user.email, selectedColor)
+    if (user && user.email) updateCalendarBackgroundColor(user.email, selectedColor)
   };
   
   const resetValues = () => {
@@ -120,24 +120,12 @@ const Calendar: React.FC = () => {
     setShowInHandCalendar(false);
   }
 
-  const calendarColors = ['Blue','Green','Purple','Pink','Orange','Yellow','Red','Light Blue','Light Green','Light Purple','Light Pink','Light Orange','Light Yellow','Light Red']
+  const calendarColors = {
+    Blue: "#0000bf",
+    Green: "#008000"
+  };
   const [calendarNames, setCalendarNames] = useState<string[]>([]);
   const [activeCalendars, setActiveCalendars] = useState<{[key: string]: boolean}>({});
-
-  // Function to update the boolean value of a specific stage
-  const handleToggleChange = (stage: string, isChecked: boolean) => {
-    setNewJobStages((prevStages) => ({
-      ...prevStages,
-      [stage]: isChecked
-    }));
-  };
-
-  // Function to convert camelCase to Title Case
-  const formatStageName = (stage:string) => {
-    return stage
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/^./, (str) => str.toUpperCase());
-  };
 
   const handleLogout = async () => {
     try { await signOut(auth); history.push('/login');
@@ -148,9 +136,7 @@ const Calendar: React.FC = () => {
   useEffect(() => {
     const unsubscribe = subscribeToJobs((jobs) => {
       setMyJobs(jobs);
-      // updateEventsFromJobs(jobs);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -158,7 +144,7 @@ const Calendar: React.FC = () => {
       const fetchBackgroundColor = async () => {
         if (user && user.email) {
           try {
-            const myColor = await getBackgroundColor(user.email);
+            const myColor = await getCalendarBackgroundColor(user.email);
             
             if (myColor) {
               console.log(myColor)
@@ -348,9 +334,7 @@ const Calendar: React.FC = () => {
     await createJobOnFirebase(newJobInformation);
   };
 
-
   //////////////////////////////  HANDLE EVENTS BEING CLICKED  //////////////////////////////
-
   const handleEventClick = (info:any) => {
     const { event } = info;
     const [titleBeforeColon] = event.title.split(':');
@@ -633,15 +617,28 @@ const Calendar: React.FC = () => {
     await menuController.close('selectedJobMenu');
   };
 
+
+  //////////////////////////////  TOGGLE STAGES  //////////////////////////////
+  // Function to update the boolean value of a specific stage
+  const handleToggleChange = (stage: string, isChecked: boolean) => {
+    setNewJobStages((prevStages) => ({
+      ...prevStages,
+      [stage]: isChecked
+    }));
+  };
+
+  // Function to convert camelCase to Title Case
+  const formatStageName = (stage:string) => {
+    return stage
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, (str) => str.toUpperCase());
+  };
+
   //////////////////////////////  SIDE MENUS  //////////////////////////////
   async function openFirstMenu() { await menuController.open('selectedJobMenu'); }
   async function openSecondMenu() { await menuController.open('newJobMenu'); }
   async function openCalendarMenu() { await menuController.open('calendarMenu'); }
-
-  const handleMenuDismissed = () => {
-    resetValues()
-  };
-
+  const handleMenuDismissed = () => { resetValues() };
 
   //////////////////////////////  SIDE MENU CALENDARS //////////////////////////////
   const [isShippingDateOpen, setIsShippingDateOpen] = useState<boolean>(false);
@@ -684,9 +681,7 @@ const Calendar: React.FC = () => {
     }
   };
 
-  const handleMenuClose = async () => {
-    await menuController.close('calendarMenu');
-  };
+  const handleMenuClose = async () => { await menuController.close('calendarMenu'); };
 
   return (
     <>
@@ -696,29 +691,28 @@ const Calendar: React.FC = () => {
         keepContentsMounted={true}
         className="perDayModal"
       >
-        <IonItem>
-          <IonInput
-            ref={inputRef}
-            labelPlacement="stacked"
-            label="Per Day Hours"
-            type="number"
-            inputmode="numeric"
-            value={hoursPerDay?.toString()}
-            placeholder={hoursPerDay?.toString()}
-            onIonInput={(e) => setHoursPerDay(parseFloat(e.detail.value!))}
-            onKeyDown={handleKeyPress}
-          />
-        </IonItem>
-        <div>
-          <IonButton onClick={() => handlePhoneDeleteEvent()} className='phoneOnly' color='danger'>Remove Day</IonButton>
-          <IonButton onClick={showJobDetails}>Job Details</IonButton>
-          <IonButton
-            onClick={() => {
-              handlePerDayValueChange();
-              setIsPerDayHoursOpen(false);
-            }}
-          >OK</IonButton>
-        </div>
+          <IonItem>
+            <IonInput
+              ref={inputRef}
+              labelPlacement="stacked"
+              label="Per Day Hours"
+              type="number"
+              inputmode="numeric"
+              value={hoursPerDay?.toString()}
+              placeholder={hoursPerDay?.toString()}
+              onIonInput={(e) => setHoursPerDay(parseFloat(e.detail.value!))}
+              onKeyDown={handleKeyPress}
+            />
+          </IonItem>
+            <IonButton
+              onClick={() => {
+                handlePerDayValueChange();
+                setIsPerDayHoursOpen(false);
+              }}
+            >OK</IonButton>
+            <IonButton onClick={showJobDetails}>Job Details</IonButton>
+            <IonButton onClick={handlePhoneDeleteEvent} className='phoneOnly' color='danger'>Remove Day</IonButton>
+
       </IonModal>
 
       <IonMenu menuId="selectedJobMenu" contentId="main-content" swipeGesture={false}>
@@ -890,8 +884,8 @@ const Calendar: React.FC = () => {
               onIonChange={e => setNewJobColor(e.detail.value)}
               interface="popover" // Use popover for immediate selection
             >
-              {calendarColors.map(color => (
-                <IonSelectOption key={color} value={color}>
+              {Object.keys(calendarColors).map(color => (
+                <IonSelectOption key={color} value={calendarColors[color as keyof typeof calendarColors]}>
                   {color}
                 </IonSelectOption>
               ))}
@@ -924,33 +918,26 @@ const Calendar: React.FC = () => {
               <IonLabel>Background</IonLabel>
               <ColorPicker onColorSelect={handleColorSelect} />
             </IonItem>
+
             <h6>Calendar Names</h6>
-              {calendarNames.map((name) => (
-                <IonItem key={name}>
-                  <IonLabel>{name}</IonLabel>
-              {name !== "main" && name !== 'shipping' && ( // Conditionally render the delete button
-                <IonButton 
-                  color="danger"
-                  slot="end"
-                  onClick={() => handleDeleteCalendar(name)}
-                >
-                  X
-                </IonButton>
-              )}
-                </IonItem>
-              ))}
-              <IonItem>
-                <IonInput
-                  value={newCalendarName}
-                  placeholder="Enter new calendar name"
-                  onIonChange={(e) => setNewCalendarName(e.detail.value!)}
-                />
-                <IonButton color="success" onClick={handleAddCalendar}>+</IonButton>
+            {calendarNames.map((name) => (
+              <IonItem key={name}>
+                <IonLabel>{name}</IonLabel>
+                {name !== "main" && name !== 'shipping' && (
+                  <IonButton  color="danger" slot="end" onClick={() => handleDeleteCalendar(name)}>X</IonButton>
+                )}
               </IonItem>
-              {/* <IonButton onClick={refreshButtonClicked}>
-                <IonIcon icon={refreshOutline} slot="icon-only" />
-              </IonButton> */}
-            </div>
+            ))}
+            <IonItem>
+              <IonInput
+                value={newCalendarName}
+                placeholder="Enter new calendar name"
+                onIonChange={(e) => setNewCalendarName(e.detail.value!)}
+              />
+              <IonButton color="success" onClick={handleAddCalendar}>+</IonButton>
+            </IonItem>
+
+          </div>
         </IonContent>
         <IonButton onClick={handleLogout}>Logout</IonButton>
       </IonMenu>
